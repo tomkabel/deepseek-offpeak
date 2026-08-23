@@ -1,0 +1,10 @@
+# Local wrangler auth/cache state — never commit.
+.wrangler/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+/tmp/
