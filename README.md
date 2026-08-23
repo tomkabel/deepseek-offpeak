@@ -6,7 +6,7 @@
 
 Zero-dependency · static · deployed on Cloudflare Pages
 
-`https://deepseek-offpeak.pages.dev`
+[![Deployment](https://img.shields.io/badge/live%20app-deepseek--offpeak.pages.dev-10b981?style=for-the-badge&logo=cloudflare&logoColor=white&labelColor=14181d)](https://deepseek-offpeak.pages.dev)
 
 </div>
 
