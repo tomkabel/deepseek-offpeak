@@ -74,7 +74,7 @@
           <tbody id="rate-body"></tbody>
         </table>
       </div>
-      <p class="note">Off-peak is 50% of peak — peak is 2× off-peak. Cache-hit inputs are ~31× cheaper than cache-miss — reuse your prompts. ¥ rate indicative (fixed 7.1).</p>
+      <p class="note">Off-peak is 50% of peak — peak is 2× off-peak. Cache-hit inputs are ~31× cheaper than cache-miss — reuse your prompts. CNY column shows DeepSeek's official ¥ prices (ZH pricing page), not an FX conversion.</p>
     </section>
 
     <section class="calc" aria-labelledby="calc-label">
@@ -98,6 +98,8 @@
           <div class="field">
             <label for="calc-out">Output tokens</label>
             <input id="calc-out" type="text" inputmode="numeric" pattern="[0-9kKmM,]*" autocomplete="off" spellcheck="false" value="1,000,000">
+            <label for="calc-imgs" hidden>Images (vision)</label>
+            <input id="calc-imgs" type="number" min="0" step="1" value="0" hidden>
             <div class="chips" role="group" aria-label="Output token presets">
               <button type="button" class="chip" data-target="calc-out" data-tokens="500">500</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="4000">4k</button>
@@ -149,7 +151,7 @@
   </main>
 
   <footer class="wrap">
-    <p>Unofficial tool. Data from the DeepSeek pricing docs and may change — verify before relying on it.</p>
+    <p>Unofficial tool. Rates &amp; schedule verified <time datetime="2026-08-26">2026-08-26</time> against <a href="https://api-docs.deepseek.com/quick_start/pricing/" rel="noopener">DeepSeek API pricing docs</a> — verify before relying on it.</p>
   </footer>
 
   <noscript>This tool needs JavaScript for the live clock and calculator.</noscript>

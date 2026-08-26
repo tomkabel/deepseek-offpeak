@@ -438,6 +438,7 @@ td.model { font-weight: 600; white-space: nowrap; }
   align-content: start;
 }
 #calc-form .field { display: flex; flex-direction: column; gap: 7px; }
+#calc-form .field[hidden] { display: none; }
 #calc-form .field > label {
   display: flex;
   justify-content: space-between;

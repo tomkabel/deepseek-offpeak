@@ -84,15 +84,21 @@ if (typeof document !== "undefined") {
   const rateBody = $("rate-body");
   const ratesSub = $("rates-sub");
   let currency = "usd";
-  const CNY_RATE = 7.1; // fixed indicative rate (see .note)
+  // Official CNY prices from api-docs.deepseek.com/zh-cn/quick_start/pricing/ (fetched 2026-08-26).
+  // DeepSeek bills CNY on the ZH platform; official ¥ beats a USD*FX conversion. Off-peak shown;
+  // peak = 2× (same as USD). ¥ is a hard-coded table, not an FX rate — drift only if DeepSeek reprices.
+  const CNY_MODELS = {
+    flash:  { hit: 0.05, miss: 1.5, out: 4.5 },
+    pro:    { hit: 0.15, miss: 4.5, out: 13.5 },
+    vision: { hit: 0.05, miss: 1.5, out: 4.5 },
+  };
   // Same formatting logic as DS.usd with a swappable prefix — DS.usd stays frozen.
   // Iteration-3 audit: fixed 3 decimals in the matrix so decimals align vertically
   // ($0.007 / $0.220 / $0.660) instead of magnitude-based stripping.
   const rateFmt = (x, cny) => {
     if (!isFinite(x)) return "—";
     if (x === 0) return (cny ? "¥" : "$") + "0";
-    const v = cny ? x * CNY_RATE : x;
-    return (cny ? "¥" : "$") + v.toFixed(3);
+    return (cny ? "¥" : "$") + x.toFixed(3);
   };
   const fmtConc = (s) => { const n = Number(String(s).replace(/\D/g, "")); return n >= 1000 ? n / 1000 + "k" : String(n); };
   const DELTA = Math.round((1 / DS.PEAK_FACTOR - 1) * 100); // -50 for factor 2
@@ -106,14 +112,18 @@ if (typeof document !== "undefined") {
     const sig = (preview === null ? "L" : String(preview)) + "|" + peak + "|" + cny;
     if (sig === ratesSig) return;
     ratesSig = sig;
+    const src = cny ? "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/" : "https://api-docs.deepseek.com/quick_start/pricing/";
     ratesSub.textContent = (cny ? "CNY" : "USD") + " per 1M tokens" +
       (preview !== null && peak ? " · showing peak rates (preview at " + hm(new Date(now)) + ")" : "");
+    ratesSub.innerHTML += ' — <a href="' + src + '" rel="noopener">source</a>';
     rateBody.innerHTML = "";
     for (const m of MODELS) {
-      const priceTds = [m.hit, m.miss, m.out].map((off) => {
-        const pk = off * DS.PEAK_FACTOR;
-        const main = peak ? pk : off;
-        const sub = peak ? off : pk;
+      const cnyR = CNY_MODELS[m.id];
+      const priceTds = [["hit", m.hit], ["miss", m.miss], ["out", m.out]].map(([key, off]) => {
+        const offV = cny ? cnyR[key] : off;
+        const pkV = offV * DS.PEAK_FACTOR;
+        const main = peak ? pkV : offV;
+        const sub = peak ? offV : pkV;
         // Delta reads relative to the main rate: peak sub is +100% when off-peak
         // is the main, off sub is -50% when peak is the main.
         const subDelta = peak ? DELTA : Math.round((DS.PEAK_FACTOR - 1) * 100);
@@ -243,8 +253,10 @@ if (typeof document !== "undefined") {
   // token breakdown line, unified emerald result cards, preview-aware prominence.
   const calcIn = $("calc-in"), calcOut = $("calc-out"), cacheRatio = $("cache-ratio");
   const cacheReadout = $("cache-readout"), breakdown = $("calc-breakdown");
+  const calcImgs = $("calc-imgs"), imgField = calcImgs?.closest(".field");
   const offLabel = $("r-off-label"), pkLabel = $("r-peak-label"), svLabel = $("r-save-label");
   const svNote = $("r-save-note");
+  const VISION_TOKENS_PER_IMAGE = 384; // official: up to 384 tokens/image (api-docs deepseek vision guide)
 
   // SI token parsing: "1M" / "500k" / "1,000,000" / "1000000" → integer. Bad/empty → 0.
   function parseTokens(s) {
@@ -268,7 +280,9 @@ if (typeof document !== "undefined") {
   };
 
   // Exposed for the Node smoke test without touching the frozen DS export.
-  globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt };
+  // MODEL_API declared here (before DS_UI export) to avoid TDZ — matches CNY_MODELS.
+  const MODEL_API = { flash: "deepseek-v4-flash", pro: "deepseek-v4-pro", vision: "deepseek-v4-flash-vision-exp" };
+  globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API };
 
   function recalc() {
     const m = MODELS.find((x) => x.id === sel.value) || MODELS[0];
@@ -276,8 +290,9 @@ if (typeof document !== "undefined") {
     const outT = parseTokens(calcOut.value);
     const ratio = Math.min(100, Math.max(0, Number(cacheRatio.value) || 0)) / 100;
     const hit = inT * ratio, miss = inT * (1 - ratio);
-    // Critique spec: inputCost = inT·ratio·hitRate + inT·(1−ratio)·missRate, outputCost = outT·outRate
-    const off = (hit * m.hit + miss * m.miss + outT * m.out) / 1e6;
+    const imgT = m.id === "vision" ? Math.max(0, Math.round(Number(calcImgs.value) || 0)) * VISION_TOKENS_PER_IMAGE : 0;
+    // Critique spec: inputCost = inT·ratio·hitRate + inT·(1−ratio)·missRate + imgT·missRate, outputCost = outT·outRate
+    const off = (hit * m.hit + (miss + imgT) * m.miss + outT * m.out) / 1e6;
     const peak = off * PEAK_FACTOR;
 
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
@@ -320,6 +335,11 @@ if (typeof document !== "undefined") {
     el.addEventListener("blur", () => { el.value = fmtTokens(parseTokens(el.value)); recalc(); });
   }
   document.getElementById("calc-form").addEventListener("input", recalc);
+  // Vision shows the image-count field; other models hide it.
+  sel.addEventListener("change", () => {
+    if (imgField) imgField.hidden = sel.value !== "vision";
+    recalc();
+  });
   // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;
   // LIVE resets prominence. Only listeners — Phase 2 functions untouched.
   scrub.addEventListener("input", recalc);
@@ -332,7 +352,7 @@ if (typeof document !== "undefined") {
    * state that collides with `preview` or the calculator.
    * ============================================================ */
   // Local model-id map (UI-only; MODELS stays frozen as the rate source).
-  const MODEL_API = { flash: "deepseek-v4-flash", pro: "deepseek-v4-pro", vision: "deepseek-v4-flash-vision" };
+  // Official API ids — vision exp suffix matters (400 without it).
   const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   // Next instant that FLIPS INTO off-peak. nextTransition can report
@@ -515,7 +535,6 @@ if (typeof document !== "undefined") {
   for (const t of TABS) t.btn.addEventListener("click", () => selectTab(t.key));
   exportDetails.addEventListener("toggle", () => { if (exportDetails.open) renderExport(); });
   sel.addEventListener("change", renderExport); // regenerate on model change
-  setInterval(renderExport, 30000); // keep the "next window" line current
   selectTab("cron"); // initial render + panel visibility
 
   // Exposed for the Node smoke test (DS_UI already exists from Phase 4).
@@ -525,4 +544,5 @@ if (typeof document !== "undefined") {
   globalThis.DS_UI.buildTs = buildTs;
   globalThis.DS_UI.renderExport = renderExport;
   globalThis.DS_UI.copyActive = () => copyBtn.dispatchEvent(new Event("click"));
+  globalThis.DS_UI._exportTimer = setInterval(renderExport, 30000); // keep the "next window" line current
 }

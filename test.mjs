@@ -2,6 +2,17 @@
 // Self-check for the peak/off-peak schedule + transition logic. Run: node test.mjs
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
+
+// Minimal DOM stub so app.js's browser-only UI block initializes (builders + CNY_MODELS).
+const el = () => ({ value: "", textContent: "", innerHTML: "", hidden: true, open: false, style: {}, addEventListener() {}, setAttribute() {}, appendChild() {}, closest() { return null; }, querySelector() { return { textContent: "" }; }, querySelectorAll() { return []; }, classList: { add() {}, remove() {}, toggle() {} }, dataset: {} });
+const modelSel = el();
+globalThis.document = {
+  getElementById: (id) => (id === "model" ? modelSel : el()),
+  querySelector: () => el(),
+  querySelectorAll: () => [],
+  createElement: () => el(),
+  addEventListener() {},
+};
 require("./app.js");
 
 const DS = globalThis.DS;
@@ -56,6 +67,24 @@ eq(DS.MODELS.length, 3, "3 models");
 eq(DS.MODELS[1].hit, 0.022, "pro cache-hit off-peak");
 eq(DS.MODELS[1].out * DS.PEAK_FACTOR, 3.96, "pro output peak = 2x");
 
+// CNY official table (ZH pricing page, fetched 2026-08-26): flash hit ¥0.05, miss ¥1.5, out ¥4.5
+const CNY = DS_UI.CNY_MODELS;
+eq(CNY.flash.hit, 0.05, "cny flash hit");
+eq(CNY.pro.miss, 4.5, "cny pro miss");
+eq(CNY.vision.out, 4.5, "cny vision out");
+// official implied FX ≈ 6.82 (not 7.1)
+eq(Math.round((4.5 / 0.66) * 100) / 100, 6.82, "cny implied fx");
+
+// vision model API id + snippet builders emit the official id
+eq(DS_UI.MODEL_API.vision, "deepseek-v4-flash-vision-exp", "vision api id");
+// builders read the live #model select; select vision before building
+const sel = document.getElementById("model");
+sel.value = "vision";
+const py = DS_UI.buildPy();
+eq(py.includes("deepseek-v4-flash-vision-exp"), true, "py snippet vision id");
+const ts = DS_UI.buildTs();
+eq(ts.includes("deepseek-v4-flash-vision-exp"), true, "ts snippet vision id");
+
 // formatting
 eq(DS.usd(0.007), "$0.007", "usd 0.007");
 eq(DS.usd(1.98), "$1.98", "usd 1.98");
@@ -64,6 +93,8 @@ eq(DS.fmtDuration(3 * 3600 * 1000 + 12 * 60 * 1000), "3h 12m", "duration");
 
 if (fails === 0) {
   console.log("OK — all schedule/rate checks passed (" + (Date.now()) + ")");
+  clearInterval(globalThis.DS_UI._exportTimer); // stop the app's 30s render interval so the process can exit
+  process.exit(0);
 } else {
   console.error(fails + " check(s) FAILED");
   process.exit(1);
