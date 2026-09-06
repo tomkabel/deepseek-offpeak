@@ -4,10 +4,12 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 // Minimal DOM stub so app.js's browser-only UI block initializes (builders + CNY_MODELS).
-const el = () => ({ value: "", textContent: "", innerHTML: "", hidden: true, open: false, style: {}, addEventListener() {}, setAttribute() {}, appendChild() {}, closest() { return null; }, querySelector() { return { textContent: "" }; }, querySelectorAll() { return []; }, classList: { add() {}, remove() {}, toggle() {} }, dataset: {} });
-const modelSel = el();
+// Elements are memoised by id so the calculator smoke test can set inputs, call recalc(), and read cards back.
+const el = (id = "") => ({ id, value: "", textContent: "", innerHTML: "", hidden: true, open: false, style: {}, attrs: {}, addEventListener() {}, setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, appendChild() {}, closest() { return null; }, querySelector() { return { textContent: "" }; }, querySelectorAll() { return []; }, classList: { add() {}, remove() {}, toggle() {} }, dataset: {} });
+const byId = new Map();
+const modelSel = el("model");
 globalThis.document = {
-  getElementById: (id) => (id === "model" ? modelSel : el()),
+  getElementById: (id) => (id === "model" ? modelSel : (byId.has(id) || byId.set(id, el(id)), byId.get(id))),
   querySelector: () => el(),
   querySelectorAll: () => [],
   createElement: () => el(),
@@ -90,6 +92,53 @@ eq(DS.usd(0.007), "$0.007", "usd 0.007");
 eq(DS.usd(1.98), "$1.98", "usd 1.98");
 eq(DS.usd(0), "$0", "usd 0");
 eq(DS.fmtDuration(3 * 3600 * 1000 + 12 * 60 * 1000), "3h 12m", "duration");
+
+// calculator parsing/formatting (audit fix: no silent 0 on unparsable input)
+eq(DS_UI.parseTokens("50 M"), 50_000_000, "parse '50 M'");
+eq(DS_UI.parseTokens("1.5m"), 1_500_000, "parse '1.5m'");
+eq(DS_UI.parseTokens("50_000_000"), 50_000_000, "parse underscores");
+eq(DS_UI.parseTokens("1,000,000"), 1_000_000, "parse commas");
+eq(DS_UI.parseTokens(""), 0, "parse empty → 0");
+eq(Number.isNaN(DS_UI.parseTokens("fifty")), true, "parse garbage → NaN");
+eq(Number.isNaN(DS_UI.parseTokens("1e6")), true, "parse 1e6 → NaN (flagged, not 0)");
+eq(Number.isFinite(DS_UI.parseTokens("9".repeat(400))), false, "parse overflow → non-finite (must be treated invalid)");
+eq(DS_UI.fmtTotal(NaN), "—", "fmtTotal NaN → dash (invalid bill blanks cards)");
+eq(Number.isNaN(DS_UI.parseTokens("1.5")), true, "bare decimal without suffix → NaN (user forgot the M)");
+eq(DS_UI.parseTokens("1500000"), 1_500_000, "bare integer still fine");
+
+// calculator smoke test through the stub DOM: readTokens flags, recalc blanks, image validity
+const g = (id) => globalThis.document.getElementById(id);
+const setModel = (v) => { modelSel.value = v; };
+setModel("flash");
+g("calc-in").value = "1M"; g("calc-out").value = "1M"; g("cache-ratio").value = "0";
+DS_UI.recalc();
+eq(g("r-off").textContent, "$0.8800", "recalc 1M/1M/0% off-peak");
+eq(g("r-cache").textContent, "$0.00 · 0%", "recalc cache saves at 0%");
+eq(g("calc-in").getAttribute("aria-invalid"), "false", "valid input not flagged");
+eq(g("calc-in-err").hidden, true, "hint hidden when valid");
+g("cache-ratio").value = "99"; DS_UI.recalc();
+eq(g("r-off").textContent, "$0.6691", "recalc 1M/1M/99% off-peak");
+eq(g("r-cache").textContent, "$0.2109 · 96%", "recalc cache saves at 99%");
+g("calc-in").value = "fifty"; DS_UI.recalc();
+eq(g("calc-in").getAttribute("aria-invalid"), "true", "invalid input flagged");
+eq(g("calc-in-err").hidden, false, "hint shown when invalid");
+eq(g("r-off").textContent, "—", "invalid input blanks off-peak card");
+eq(g("r-peak").textContent, "—", "invalid input blanks peak card");
+eq(g("r-cache").textContent, "— · —%", "invalid input blanks cache card");
+eq(g("r-save").textContent, "— · 50% vs peak", "invalid input blanks save card");
+g("calc-in").value = "1M"; g("cache-ratio").value = "0"; setModel("vision");
+g("calc-imgs").value = "10"; g("calc-imgs").validity = { valid: true }; DS_UI.recalc();
+eq(g("r-off").textContent, "$0.8808", "vision: 10 images add 3,840 miss tokens");
+g("calc-imgs").value = "20000"; g("calc-imgs").validity = { valid: false }; DS_UI.recalc();
+eq(g("calc-imgs").getAttribute("aria-invalid"), "true", "image count above max flagged");
+eq(g("calc-imgs-err").hidden, false, "image hint shown");
+eq(g("r-off").textContent, "—", "invalid image count blanks bill (no field/cost mismatch)");
+setModel("pro"); DS_UI.recalc();
+eq(g("r-off").textContent, "$2.6400", "non-vision ignores invalid image field");
+eq(g("calc-imgs").getAttribute("aria-invalid"), "false", "image flag cleared off vision");
+eq(DS_UI.fmtTotal(0.000691), "$0.000691", "fmtTotal sub-cent keeps 6 decimals");
+eq(DS_UI.fmtTotal(0.7735), "$0.7735", "fmtTotal <$10 4 decimals");
+eq(DS_UI.fmtTotal(11.66), "$11.66", "fmtTotal ≥$10 2 decimals");
 
 if (fails === 0) {
   console.log("OK — all schedule/rate checks passed (" + (Date.now()) + ")");
