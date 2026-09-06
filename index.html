@@ -87,7 +87,7 @@
           </div>
           <div class="field">
             <label for="calc-in">Input tokens</label>
-            <input id="calc-in" type="text" inputmode="numeric" pattern="[0-9kKmM,]*" autocomplete="off" spellcheck="false" value="1,000,000">
+            <input id="calc-in" type="text" inputmode="numeric" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000">
             <div class="chips" role="group" aria-label="Input token presets">
               <button type="button" class="chip" data-target="calc-in" data-tokens="8000">8k</button>
               <button type="button" class="chip" data-target="calc-in" data-tokens="32000">32k</button>
@@ -97,15 +97,17 @@
           </div>
           <div class="field">
             <label for="calc-out">Output tokens</label>
-            <input id="calc-out" type="text" inputmode="numeric" pattern="[0-9kKmM,]*" autocomplete="off" spellcheck="false" value="1,000,000">
-            <label for="calc-imgs" hidden>Images (vision)</label>
-            <input id="calc-imgs" type="number" min="0" max="100" step="1" value="0" hidden>
+            <input id="calc-out" type="text" inputmode="numeric" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000">
             <div class="chips" role="group" aria-label="Output token presets">
               <button type="button" class="chip" data-target="calc-out" data-tokens="500">500</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="4000">4k</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="16000">16k</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="1000000">1M</button>
             </div>
+          </div>
+          <div class="field" id="img-field" hidden>
+            <label for="calc-imgs">Images (vision) <small>384 tok each · miss rate</small></label>
+            <input id="calc-imgs" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric">
           </div>
           <div class="field">
             <label for="cache-ratio">Prompt cache hit ratio <b id="cache-readout">80%</b></label>
@@ -120,6 +122,7 @@
             <p class="breakdown" id="calc-breakdown">…</p>
             <div class="r"><span class="r-label" id="r-off-label">Off-peak</span><span class="r-val off" id="r-off">$0</span></div>
             <div class="r"><span class="r-label" id="r-peak-label">Peak</span><span class="r-val" id="r-peak">$0</span></div>
+            <div class="r"><span class="r-label">Cache saves</span><span class="r-val save" id="r-cache">$0</span><span class="r-note">vs 0% hit ratio</span></div>
             <div class="r"><span class="r-label" id="r-save-label">You save</span><span class="r-val save" id="r-save">$0</span><span class="r-note" id="r-save-note"></span></div>
           </div>
           <div id="export-slot">
