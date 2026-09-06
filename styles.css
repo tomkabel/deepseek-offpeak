@@ -472,6 +472,9 @@ td.model { font-weight: 600; white-space: nowrap; }
     box-shadow: 0 0 0 4px var(--emerald-surface);
   }
 }
+/* invalid token text (audit): amber ring, wins over focus ring */
+#calc-form input[type="text"][aria-invalid="true"],
+#calc-form input[type="text"][aria-invalid="true"]:focus { border-color: var(--peak); box-shadow: 0 0 0 1px var(--peak); }
 /* preset chips — real buttons, keyboard-focusable, never submit */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
