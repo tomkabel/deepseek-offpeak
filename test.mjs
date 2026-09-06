@@ -91,6 +91,18 @@ eq(DS.usd(1.98), "$1.98", "usd 1.98");
 eq(DS.usd(0), "$0", "usd 0");
 eq(DS.fmtDuration(3 * 3600 * 1000 + 12 * 60 * 1000), "3h 12m", "duration");
 
+// calculator parsing/formatting (audit fix: no silent 0 on unparsable input)
+eq(DS_UI.parseTokens("50 M"), 50_000_000, "parse '50 M'");
+eq(DS_UI.parseTokens("1.5m"), 1_500_000, "parse '1.5m'");
+eq(DS_UI.parseTokens("50_000_000"), 50_000_000, "parse underscores");
+eq(DS_UI.parseTokens("1,000,000"), 1_000_000, "parse commas");
+eq(DS_UI.parseTokens(""), 0, "parse empty → 0");
+eq(Number.isNaN(DS_UI.parseTokens("fifty")), true, "parse garbage → NaN");
+eq(Number.isNaN(DS_UI.parseTokens("1e6")), true, "parse 1e6 → NaN (flagged, not 0)");
+eq(DS_UI.fmtTotal(0.000691), "$0.000691", "fmtTotal sub-cent keeps 6 decimals");
+eq(DS_UI.fmtTotal(0.7735), "$0.7735", "fmtTotal <$10 4 decimals");
+eq(DS_UI.fmtTotal(11.66), "$11.66", "fmtTotal ≥$10 2 decimals");
+
 if (fails === 0) {
   console.log("OK — all schedule/rate checks passed (" + (Date.now()) + ")");
   clearInterval(globalThis.DS_UI._exportTimer); // stop the app's 30s render interval so the process can exit
