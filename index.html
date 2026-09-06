@@ -87,7 +87,8 @@
           </div>
           <div class="field">
             <label for="calc-in">Input tokens</label>
-            <input id="calc-in" type="text" inputmode="numeric" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000">
+            <input id="calc-in" type="text" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000" aria-describedby="calc-in-err">
+            <small class="field-err" id="calc-in-err" hidden>Use digits with an optional k, M or B suffix, e.g. 1.5M or 500k.</small>
             <div class="chips" role="group" aria-label="Input token presets">
               <button type="button" class="chip" data-target="calc-in" data-tokens="8000">8k</button>
               <button type="button" class="chip" data-target="calc-in" data-tokens="32000">32k</button>
@@ -97,7 +98,8 @@
           </div>
           <div class="field">
             <label for="calc-out">Output tokens</label>
-            <input id="calc-out" type="text" inputmode="numeric" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000">
+            <input id="calc-out" type="text" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000" aria-describedby="calc-out-err">
+            <small class="field-err" id="calc-out-err" hidden>Use digits with an optional k, M or B suffix, e.g. 1.5M or 500k.</small>
             <div class="chips" role="group" aria-label="Output token presets">
               <button type="button" class="chip" data-target="calc-out" data-tokens="500">500</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="4000">4k</button>

@@ -270,10 +270,13 @@ if (typeof document !== "undefined") {
     const mult = { k: 1e3, m: 1e6, b: 1e9, "": 1 }[m[2]];
     return Math.round(Number(m[1]) * mult);
   }
+  // Returns NaN on invalid/overflow so recalc can blank the bill instead of pricing 0 tokens.
   const readTokens = (el) => {
     const n = parseTokens(el.value);
-    el.setAttribute("aria-invalid", String(Number.isNaN(n)));
-    return Number.isNaN(n) ? 0 : n;
+    const bad = !Number.isFinite(n);
+    el.setAttribute("aria-invalid", String(bad));
+    $(el.id + "-err").hidden = !bad;
+    return bad ? NaN : n;
   };
   function fmtTokens(n) { return Number(n || 0).toLocaleString("en-US"); }
 
@@ -298,22 +301,25 @@ if (typeof document !== "undefined") {
     const outT = readTokens(calcOut);
     const ratio = Math.min(100, Math.max(0, Number(cacheRatio.value) || 0)) / 100;
     const hit = inT * ratio, miss = inT * (1 - ratio);
-    const imgT = m.id === "vision" ? Math.max(0, Math.round(Number(calcImgs.value) || 0)) * VISION_TOKENS_PER_IMAGE : 0;
+    // Clamp to the input's min/max/step: type=number does not enforce them on typed values.
+    const imgN = Math.min(Number(calcImgs.max) || 10000, Math.max(0, Math.round(Number(calcImgs.value) || 0)));
+    const imgT = m.id === "vision" ? imgN * VISION_TOKENS_PER_IMAGE : 0;
     // Critique spec: inputCost = inT·ratio·hitRate + inT·(1−ratio)·missRate + imgT·missRate, outputCost = outT·outRate
     const off = (hit * m.hit + (miss + imgT) * m.miss + outT * m.out) / 1e6;
     const peak = off * PEAK_FACTOR;
 
     // Cache savings = input cost delta vs a 0% hit ratio. This is what the slider
     // actually moves; the peak/off-peak 50% is a separate, constant delta.
+    const invalid = Number.isNaN(off); // any token field unparsable → every card shows "—" (fmtTotal handles NaN)
     const inCost0 = ((inT + imgT) * m.miss) / 1e6;
     const inCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
     const outCost = (outT * m.out) / 1e6;
     const cacheSave = inCost0 - inCost;
-    const cachePct = inCost0 > 0 ? Math.round((cacheSave / inCost0) * 100) : 0;
+    const cachePct = invalid ? "—" : inCost0 > 0 ? Math.round((cacheSave / inCost0) * 100) : 0;
 
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
     cacheRatio.setAttribute("aria-valuetext", Math.round(ratio * 100) + "% cache hit, saves " + fmtTotal(cacheSave));
-    breakdown.textContent =
+    breakdown.textContent = invalid ? "Fix the highlighted token field to see costs." :
       "In: " + fmtTokens(hit) + " hit @ " + usd(m.hit) + "/1M · " +
       fmtTokens(miss) + " miss @ " + usd(m.miss) + "/1M" +
       (imgT ? " · " + fmtTokens(imgT) + " image tok @ " + usd(m.miss) + "/1M" : "") +

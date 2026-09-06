@@ -99,6 +99,8 @@ eq(DS_UI.parseTokens("1,000,000"), 1_000_000, "parse commas");
 eq(DS_UI.parseTokens(""), 0, "parse empty → 0");
 eq(Number.isNaN(DS_UI.parseTokens("fifty")), true, "parse garbage → NaN");
 eq(Number.isNaN(DS_UI.parseTokens("1e6")), true, "parse 1e6 → NaN (flagged, not 0)");
+eq(Number.isFinite(DS_UI.parseTokens("9".repeat(400))), false, "parse overflow → non-finite (must be treated invalid)");
+eq(DS_UI.fmtTotal(NaN), "—", "fmtTotal NaN → dash (invalid bill blanks cards)");
 eq(DS_UI.fmtTotal(0.000691), "$0.000691", "fmtTotal sub-cent keeps 6 decimals");
 eq(DS_UI.fmtTotal(0.7735), "$0.7735", "fmtTotal <$10 4 decimals");
 eq(DS_UI.fmtTotal(11.66), "$11.66", "fmtTotal ≥$10 2 decimals");
