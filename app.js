@@ -267,6 +267,7 @@ if (typeof document !== "undefined") {
     if (t === "") return 0;
     const m = t.match(/^(\d+(?:\.\d+)?)([kmb]?)$/);
     if (!m) return NaN;
+    if (!m[2] && m[1].includes(".")) return NaN; // "1.5" tokens is meaningless — user forgot the suffix
     const mult = { k: 1e3, m: 1e6, b: 1e9, "": 1 }[m[2]];
     return Math.round(Number(m[1]) * mult);
   }
@@ -293,7 +294,7 @@ if (typeof document !== "undefined") {
   // Exposed for the Node smoke test without touching the frozen DS export.
   // MODEL_API declared here (before DS_UI export) to avoid TDZ — matches CNY_MODELS.
   const MODEL_API = { flash: "deepseek-v4-flash", pro: "deepseek-v4-pro", vision: "deepseek-v4-flash-vision-exp" };
-  globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API };
+  globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API, readTokens };
 
   function recalc() {
     const m = MODELS.find((x) => x.id === sel.value) || MODELS[0];
@@ -301,16 +302,19 @@ if (typeof document !== "undefined") {
     const outT = readTokens(calcOut);
     const ratio = Math.min(100, Math.max(0, Number(cacheRatio.value) || 0)) / 100;
     const hit = inT * ratio, miss = inT * (1 - ratio);
-    // Clamp to the input's min/max/step: type=number does not enforce them on typed values.
-    const imgN = Math.min(Number(calcImgs.max) || 10000, Math.max(0, Math.round(Number(calcImgs.value) || 0)));
-    const imgT = m.id === "vision" ? imgN * VISION_TOKENS_PER_IMAGE : 0;
+    // type=number does not enforce min/max/step on typed values; out-of-range → invalid
+    // (blanks the bill like the token fields) so the field and the cost never disagree.
+    const imgBad = m.id === "vision" && calcImgs.validity && !calcImgs.validity.valid;
+    calcImgs.setAttribute("aria-invalid", String(imgBad));
+    $("calc-imgs-err").hidden = !imgBad;
+    const imgT = m.id !== "vision" ? 0 : imgBad ? NaN : (Number(calcImgs.value) || 0) * VISION_TOKENS_PER_IMAGE;
     // Critique spec: inputCost = inT·ratio·hitRate + inT·(1−ratio)·missRate + imgT·missRate, outputCost = outT·outRate
     const off = (hit * m.hit + (miss + imgT) * m.miss + outT * m.out) / 1e6;
     const peak = off * PEAK_FACTOR;
 
     // Cache savings = input cost delta vs a 0% hit ratio. This is what the slider
     // actually moves; the peak/off-peak 50% is a separate, constant delta.
-    const invalid = Number.isNaN(off); // any token field unparsable → every card shows "—" (fmtTotal handles NaN)
+    const invalid = Number.isNaN(off); // any field invalid → every card shows "—" (fmtTotal handles NaN)
     const inCost0 = ((inT + imgT) * m.miss) / 1e6;
     const inCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
     const outCost = (outT * m.out) / 1e6;
@@ -319,7 +323,7 @@ if (typeof document !== "undefined") {
 
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
     cacheRatio.setAttribute("aria-valuetext", Math.round(ratio * 100) + "% cache hit, saves " + fmtTotal(cacheSave));
-    breakdown.textContent = invalid ? "Fix the highlighted token field to see costs." :
+    breakdown.textContent = invalid ? "Fix the highlighted field to see costs." :
       "In: " + fmtTokens(hit) + " hit @ " + usd(m.hit) + "/1M · " +
       fmtTokens(miss) + " miss @ " + usd(m.miss) + "/1M" +
       (imgT ? " · " + fmtTokens(imgT) + " image tok @ " + usd(m.miss) + "/1M" : "") +
@@ -376,6 +380,7 @@ if (typeof document !== "undefined") {
   scrub.addEventListener("input", recalc);
   liveBtn.addEventListener("click", recalc);
   recalc();
+  globalThis.DS_UI.recalc = recalc; // DOM-level smoke test drives it against the stub
 
   /* ============================================================
    * Phase 5 — dev actionability: cron / SDK export drawer.

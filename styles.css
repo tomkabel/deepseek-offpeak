@@ -473,8 +473,8 @@ td.model { font-weight: 600; white-space: nowrap; }
   }
 }
 /* invalid token text (audit): amber border; focused keeps the 4px ring, tinted amber */
-#calc-form input[type="text"][aria-invalid="true"] { border-color: var(--peak); box-shadow: 0 0 0 1px var(--peak); }
-#calc-form input[type="text"][aria-invalid="true"]:focus { border-color: var(--peak); box-shadow: 0 0 0 4px oklch(0.75 0.16 55 / 0.25); }
+#calc-form input[aria-invalid="true"] { border-color: var(--peak); box-shadow: 0 0 0 1px var(--peak); }
+#calc-form input[aria-invalid="true"]:focus { border-color: var(--peak); box-shadow: 0 0 0 4px oklch(0.75 0.16 55 / 0.25); }
 .field-err { font-size: 12px; color: var(--peak); }
 .field-err[hidden] { display: none; }
 /* preset chips — real buttons, keyboard-focusable, never submit */

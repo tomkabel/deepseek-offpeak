@@ -88,7 +88,7 @@
           <div class="field">
             <label for="calc-in">Input tokens</label>
             <input id="calc-in" type="text" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000" aria-describedby="calc-in-err">
-            <small class="field-err" id="calc-in-err" hidden>Use digits with an optional k, M or B suffix, e.g. 1.5M or 500k.</small>
+            <small class="field-err" id="calc-in-err" hidden>Whole number, or a decimal with a k, M or B suffix, e.g. 1.5M or 500k.</small>
             <div class="chips" role="group" aria-label="Input token presets">
               <button type="button" class="chip" data-target="calc-in" data-tokens="8000">8k</button>
               <button type="button" class="chip" data-target="calc-in" data-tokens="32000">32k</button>
@@ -99,7 +99,7 @@
           <div class="field">
             <label for="calc-out">Output tokens</label>
             <input id="calc-out" type="text" pattern="[0-9kKmMbB,._ ]*" autocomplete="off" spellcheck="false" value="1,000,000" aria-describedby="calc-out-err">
-            <small class="field-err" id="calc-out-err" hidden>Use digits with an optional k, M or B suffix, e.g. 1.5M or 500k.</small>
+            <small class="field-err" id="calc-out-err" hidden>Whole number, or a decimal with a k, M or B suffix, e.g. 1.5M or 500k.</small>
             <div class="chips" role="group" aria-label="Output token presets">
               <button type="button" class="chip" data-target="calc-out" data-tokens="500">500</button>
               <button type="button" class="chip" data-target="calc-out" data-tokens="4000">4k</button>
@@ -109,7 +109,8 @@
           </div>
           <div class="field" id="img-field" hidden>
             <label for="calc-imgs">Images (vision) <small>384 tok each · miss rate</small></label>
-            <input id="calc-imgs" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric">
+            <input id="calc-imgs" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric" aria-describedby="calc-imgs-err">
+            <small class="field-err" id="calc-imgs-err" hidden>Whole number between 0 and 10,000.</small>
           </div>
           <div class="field">
             <label for="cache-ratio">Prompt cache hit ratio <b id="cache-readout">80%</b></label>
