@@ -373,6 +373,7 @@ if (typeof document !== "undefined") {
   // Vision shows the image-count field; other models hide it.
   sel.addEventListener("change", () => {
     if (imgField) imgField.hidden = sel.value !== "vision";
+    if (sel.value !== "vision") calcImgs.value = "0"; // stale count must not resurface on return to Vision (kept from a281cf4)
     recalc();
   });
   // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;
