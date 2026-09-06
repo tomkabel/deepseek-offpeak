@@ -296,8 +296,11 @@ if (typeof document !== "undefined") {
     const peak = off * PEAK_FACTOR;
 
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
+    const inputCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
+    const outputCost = (outT * m.out) / 1e6;
     breakdown.textContent = fmtTokens(hit) + " @ " + usd(m.hit) + " (hit) · " +
-      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss)";
+      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss) · " +
+      fmtTokens(outT) + " @ " + usd(m.out) + " (out) = " + fmtTotal(inputCost + outputCost);
 
     // Preview-aware prominence: card 1 is always the active-window total. When
     // the playhead sits in a peak window, card 1 flips to PEAK and the save
@@ -310,15 +313,15 @@ if (typeof document !== "undefined") {
     pkLabel.textContent = activePeak ? "Off-peak" : "Peak";
     rOff.className = "r-val " + (activePeak ? "pk" : "off"); // prominent: amber when peak is active, emerald otherwise
     rPeak.className = "r-val dim";  // secondary: muted
-    const pct = Math.round((1 - 1 / PEAK_FACTOR) * 100) + "%";
+    const save = peak - off;
+    const savePct = Math.round((save / peak) * 100) + "%";
     if (activePeak) {
-      const save = peak - off; // positive — waiting realizes it
       svLabel.textContent = "Save by waiting";
-      rSave.textContent = fmtTotal(save) + " · " + pct;
+      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
       svNote.textContent = "Queue off-peak to save " + fmtTotal(save);
     } else {
       svLabel.textContent = "You save";
-      rSave.textContent = fmtTotal(peak - off) + " · " + pct;
+      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
       svNote.textContent = "";
     }
   }
@@ -326,8 +329,9 @@ if (typeof document !== "undefined") {
   // Preset chips fill + recalc (type="button", never a form submit).
   for (const chip of document.querySelectorAll(".chip")) {
     chip.addEventListener("click", () => {
-      $(chip.dataset.target).value = fmtTokens(Number(chip.dataset.tokens));
-      recalc();
+      const el = $(chip.dataset.target);
+      el.value = fmtTokens(Number(chip.dataset.tokens));
+      el.blur();  // Trigger blur listener for immediate normalization.
     });
   }
   // Blur normalizes the raw SI value into grouped digits.
@@ -335,9 +339,19 @@ if (typeof document !== "undefined") {
     el.addEventListener("blur", () => { el.value = fmtTokens(parseTokens(el.value)); recalc(); });
   }
   document.getElementById("calc-form").addEventListener("input", recalc);
+  // Direct listener on cache-ratio ensures reliable updates; form bubbling unreliable for range inputs.
+  cacheRatio.addEventListener("input", () => {
+    const pct = Math.round(Number(cacheRatio.value)) + "%";
+    cacheRatio.setAttribute("aria-valuetext", pct + " cache hit ratio");
+    recalc();
+  });
   // Vision shows the image-count field; other models hide it.
   sel.addEventListener("change", () => {
     if (imgField) imgField.hidden = sel.value !== "vision";
+    // Reset image count when switching from vision to other models.
+    if (sel.value !== "vision") {
+      calcImgs.value = "0";
+    }
     recalc();
   });
   // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;
