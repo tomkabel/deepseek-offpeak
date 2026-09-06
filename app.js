@@ -253,20 +253,28 @@ if (typeof document !== "undefined") {
   // token breakdown line, unified emerald result cards, preview-aware prominence.
   const calcIn = $("calc-in"), calcOut = $("calc-out"), cacheRatio = $("cache-ratio");
   const cacheReadout = $("cache-readout"), breakdown = $("calc-breakdown");
-  const calcImgs = $("calc-imgs"), imgField = calcImgs?.closest(".field");
+  // Own wrapper — closest(".field") used to resolve to the Output-tokens field and hide it on Pro.
+  const calcImgs = $("calc-imgs"), imgField = $("img-field");
   const offLabel = $("r-off-label"), pkLabel = $("r-peak-label"), svLabel = $("r-save-label");
   const svNote = $("r-save-note");
   const VISION_TOKENS_PER_IMAGE = 384; // official: up to 384 tokens/image (api-docs deepseek vision guide)
 
-  // SI token parsing: "1M" / "500k" / "1,000,000" / "1000000" → integer. Bad/empty → 0.
+  // SI token parsing: "1M" / "1.5m" / "500 k" / "1,000,000" / "50_000_000" → integer.
+  // Empty → 0. Unparsable → NaN so the caller can flag the field instead of
+  // silently billing 0 input tokens (audit root cause B).
   function parseTokens(s) {
-    const t = String(s ?? "").trim().toLowerCase();
-    const m = t.match(/^([0-9,]+)([km]?)$/);
-    if (!m) return 0;
-    const n = Number(m[1].replace(/,/g, ""));
-    if (!isFinite(n) || n < 0) return 0;
-    return Math.round(n * (m[2] === "k" ? 1e3 : m[2] === "m" ? 1e6 : 1));
+    const t = String(s ?? "").trim().toLowerCase().replace(/[,_\s]/g, "");
+    if (t === "") return 0;
+    const m = t.match(/^(\d+(?:\.\d+)?)([kmb]?)$/);
+    if (!m) return NaN;
+    const mult = { k: 1e3, m: 1e6, b: 1e9, "": 1 }[m[2]];
+    return Math.round(Number(m[1]) * mult);
   }
+  const readTokens = (el) => {
+    const n = parseTokens(el.value);
+    el.setAttribute("aria-invalid", String(Number.isNaN(n)));
+    return Number.isNaN(n) ? 0 : n;
+  };
   function fmtTokens(n) { return Number(n || 0).toLocaleString("en-US"); }
 
   // Uniform total formatting — iteration-3 audit: all three cards must agree.
@@ -275,7 +283,7 @@ if (typeof document !== "undefined") {
   // appears beside $0.7096. Intl.NumberFormat is stdlib — no new deps.
   const fmtTotal = (x) => {
     if (!isFinite(x)) return "—";
-    const d = x > 0 && x < 10 ? 4 : 2;
+    const d = x > 0 && x < 0.01 ? 6 : x > 0 && x < 10 ? 4 : 2;
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: d, maximumFractionDigits: d }).format(x);
   };
 
@@ -286,8 +294,8 @@ if (typeof document !== "undefined") {
 
   function recalc() {
     const m = MODELS.find((x) => x.id === sel.value) || MODELS[0];
-    const inT = parseTokens(calcIn.value);
-    const outT = parseTokens(calcOut.value);
+    const inT = readTokens(calcIn);
+    const outT = readTokens(calcOut);
     const ratio = Math.min(100, Math.max(0, Number(cacheRatio.value) || 0)) / 100;
     const hit = inT * ratio, miss = inT * (1 - ratio);
     const imgT = m.id === "vision" ? Math.max(0, Math.round(Number(calcImgs.value) || 0)) * VISION_TOKENS_PER_IMAGE : 0;
@@ -295,12 +303,22 @@ if (typeof document !== "undefined") {
     const off = (hit * m.hit + (miss + imgT) * m.miss + outT * m.out) / 1e6;
     const peak = off * PEAK_FACTOR;
 
+    // Cache savings = input cost delta vs a 0% hit ratio. This is what the slider
+    // actually moves; the peak/off-peak 50% is a separate, constant delta.
+    const inCost0 = ((inT + imgT) * m.miss) / 1e6;
+    const inCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
+    const outCost = (outT * m.out) / 1e6;
+    const cacheSave = inCost0 - inCost;
+    const cachePct = inCost0 > 0 ? Math.round((cacheSave / inCost0) * 100) : 0;
+
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
-    const inputCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
-    const outputCost = (outT * m.out) / 1e6;
-    breakdown.textContent = fmtTokens(hit) + " @ " + usd(m.hit) + " (hit) · " +
-      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss) · " +
-      fmtTokens(outT) + " @ " + usd(m.out) + " (out) = " + fmtTotal(inputCost + outputCost);
+    cacheRatio.setAttribute("aria-valuetext", Math.round(ratio * 100) + "% cache hit, saves " + fmtTotal(cacheSave));
+    breakdown.textContent =
+      "In: " + fmtTokens(hit) + " hit @ " + usd(m.hit) + "/1M · " +
+      fmtTokens(miss) + " miss @ " + usd(m.miss) + "/1M" +
+      (imgT ? " · " + fmtTokens(imgT) + " image tok @ " + usd(m.miss) + "/1M" : "") +
+      " · Out: " + fmtTokens(outT) + " @ " + usd(m.out) + "/1M (" + (off > 0 ? Math.round(outCost / off * 100) : 0) + "% of bill)";
+    $("r-cache").textContent = fmtTotal(cacheSave) + " · " + cachePct + "%";
 
     // Preview-aware prominence: card 1 is always the active-window total. When
     // the playhead sits in a peak window, card 1 flips to PEAK and the save
@@ -313,15 +331,15 @@ if (typeof document !== "undefined") {
     pkLabel.textContent = activePeak ? "Off-peak" : "Peak";
     rOff.className = "r-val " + (activePeak ? "pk" : "off"); // prominent: amber when peak is active, emerald otherwise
     rPeak.className = "r-val dim";  // secondary: muted
-    const save = peak - off;
-    const savePct = Math.round((save / peak) * 100) + "%";
+    const pct = Math.round((1 - 1 / PEAK_FACTOR) * 100) + "% vs peak";
     if (activePeak) {
+      const save = peak - off; // positive — waiting realizes it
       svLabel.textContent = "Save by waiting";
-      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
+      rSave.textContent = fmtTotal(save) + " · " + pct;
       svNote.textContent = "Queue off-peak to save " + fmtTotal(save);
     } else {
       svLabel.textContent = "You save";
-      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
+      rSave.textContent = fmtTotal(peak - off) + " · " + pct;
       svNote.textContent = "";
     }
   }
@@ -329,29 +347,22 @@ if (typeof document !== "undefined") {
   // Preset chips fill + recalc (type="button", never a form submit).
   for (const chip of document.querySelectorAll(".chip")) {
     chip.addEventListener("click", () => {
-      const el = $(chip.dataset.target);
-      el.value = fmtTokens(Number(chip.dataset.tokens));
-      el.blur();  // Trigger blur listener for immediate normalization.
+      $(chip.dataset.target).value = fmtTokens(Number(chip.dataset.tokens));
+      recalc();
     });
   }
   // Blur normalizes the raw SI value into grouped digits.
   for (const el of [calcIn, calcOut]) {
-    el.addEventListener("blur", () => { el.value = fmtTokens(parseTokens(el.value)); recalc(); });
+    el.addEventListener("blur", () => {
+      const n = parseTokens(el.value);
+      if (!Number.isNaN(n)) el.value = fmtTokens(n); // keep invalid text visible so the user can fix it
+      recalc();
+    });
   }
   document.getElementById("calc-form").addEventListener("input", recalc);
-  // Direct listener on cache-ratio ensures reliable updates; form bubbling unreliable for range inputs.
-  cacheRatio.addEventListener("input", () => {
-    const pct = Math.round(Number(cacheRatio.value)) + "%";
-    cacheRatio.setAttribute("aria-valuetext", pct + " cache hit ratio");
-    recalc();
-  });
   // Vision shows the image-count field; other models hide it.
   sel.addEventListener("change", () => {
     if (imgField) imgField.hidden = sel.value !== "vision";
-    // Reset image count when switching from vision to other models.
-    if (sel.value !== "vision") {
-      calcImgs.value = "0";
-    }
     recalc();
   });
   // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;
