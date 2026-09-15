@@ -245,123 +245,66 @@ if (typeof document !== "undefined") {
     tick();
   });
 
-  // Currency toggle — re-renders the matrix in whichever preview state is active.
+  // Currency toggle — re-renders the rate matrix and the savings quadrants in
+  // whichever preview state is active (one listener owns `currency`).
   for (const r of document.querySelectorAll('input[name="currency"]')) {
-    r.addEventListener("change", () => { currency = r.value; renderRates(); });
+    r.addEventListener("change", () => { currency = r.value; renderRates(); renderSavings(); });
   }
 
-  // Calculator — Phase 4: SI token inputs + preset chips, cache-hit % slider,
-  // token breakdown line, unified emerald result cards, preview-aware prominence.
-  const calcIn = $("calc-in"), calcOut = $("calc-out"), cacheRatio = $("cache-ratio");
-  const cacheReadout = $("cache-readout"), breakdown = $("calc-breakdown");
-  const calcImgs = $("calc-imgs"), imgField = calcImgs?.closest(".field");
-  const offLabel = $("r-off-label"), pkLabel = $("r-peak-label"), svLabel = $("r-save-label");
-  const svNote = $("r-save-note");
-  const VISION_TOKENS_PER_IMAGE = 384; // official: up to 384 tokens/image (api-docs deepseek vision guide)
+  // Cache playbook — v5: the calculator answered a question the user already
+  // knew. The savings panel answers the one nobody tunes: what prefix
+  // discipline is worth per year, with off-peak stacked on the residual misses.
+  //
+  // Anchor scenario: docs/support assistant. 28,500 of the 30,000 input tokens
+  // are a stable prefix (system 1.2k + tools 1.8k + 20 few-shots 6.5k +
+  // retrieved docs 19k); the remaining 1,500 are the live question.
+  const SCENARIO = { req: 12000, inT: 30000, prefixT: 28500, outT: 700, days: 365 };
+  const MAX_RATIO = SCENARIO.prefixT / SCENARIO.inT; // 0.95 — the prefix share IS the ceiling
 
-  // SI token parsing: "1M" / "500k" / "1,000,000" / "1000000" → integer. Bad/empty → 0.
-  function parseTokens(s) {
-    const t = String(s ?? "").trim().toLowerCase();
-    const m = t.match(/^([0-9,]+)([km]?)$/);
-    if (!m) return 0;
-    const n = Number(m[1].replace(/,/g, ""));
-    if (!isFinite(n) || n < 0) return 0;
-    return Math.round(n * (m[2] === "k" ? 1e3 : m[2] === "m" ? 1e6 : 1));
+  // Annual spend for SCENARIO. `rates` is a per-1M off-peak {hit, miss, out}
+  // (a MODELS row or a CNY_MODELS row), ratio is the cache-hit share 0..1,
+  // peakMul is 1 (off-peak) or DS.PEAK_FACTOR (peak).
+  function annualCost(rates, ratio, peakMul) {
+    const { inT, outT, req, days } = SCENARIO;
+    const perReq = (inT * ratio * rates.hit + inT * (1 - ratio) * rates.miss + outT * rates.out) / 1e6;
+    return perReq * peakMul * req * days;
   }
-  function fmtTokens(n) { return Number(n || 0).toLocaleString("en-US"); }
 
-  // Uniform total formatting — iteration-3 audit: all three cards must agree.
-  // Rule: < $10 → 4 decimals ($0.7096 / $1.4192), ≥ $10 → 2 decimals ($101.13).
-  // Fixed precision per magnitude (no trailing-zero stripping) so $1.42 never
-  // appears beside $0.7096. Intl.NumberFormat is stdlib — no new deps.
-  const fmtTotal = (x) => {
-    if (!isFinite(x)) return "—";
-    const d = x > 0 && x < 10 ? 4 : 2;
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: d, maximumFractionDigits: d }).format(x);
-  };
+  // Annual magnitudes read as whole units — cents are noise at $43,099/yr.
+  // narrowSymbol keeps CNY as "¥"; en-US would otherwise render "CN¥".
+  const fmtYear = (x, cny) => new Intl.NumberFormat("en-US", {
+    style: "currency", currency: cny ? "CNY" : "USD", currencyDisplay: "narrowSymbol", maximumFractionDigits: 0,
+  }).format(x);
 
   // Exposed for the Node smoke test without touching the frozen DS export.
   // MODEL_API declared here (before DS_UI export) to avoid TDZ — matches CNY_MODELS.
   // deepseek-v4-flash / deepseek-v4-flash-vision-exp are retired legacy aliases —
   // still accepted but routed to deepseek-flash (DeepSeek-V4.1-Flash) at Flash price.
   const MODEL_API = { flash: "deepseek-flash", pro: "deepseek-v4-pro", vision: "deepseek-flash" };
-  globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API };
+  globalThis.DS_UI = { annualCost, SCENARIO, rateFmt, CNY_MODELS, MODEL_API };
 
-  function recalc() {
+  const QUADS = { offCold: $("q-off-cold"), offHot: $("q-off-hot"), pkCold: $("q-pk-cold"), pkHot: $("q-pk-hot") };
+
+  function renderSavings() {
     const m = MODELS.find((x) => x.id === sel.value) || MODELS[0];
-    const inT = parseTokens(calcIn.value);
-    const outT = parseTokens(calcOut.value);
-    const ratio = Math.min(100, Math.max(0, Number(cacheRatio.value) || 0)) / 100;
-    const hit = inT * ratio, miss = inT * (1 - ratio);
-    const imgT = m.id === "vision" ? Math.max(0, Math.round(Number(calcImgs.value) || 0)) * VISION_TOKENS_PER_IMAGE : 0;
-    // Critique spec: inputCost = inT·ratio·hitRate + inT·(1−ratio)·missRate + imgT·missRate, outputCost = outT·outRate
-    const off = (hit * m.hit + (miss + imgT) * m.miss + outT * m.out) / 1e6;
-    const peak = off * PEAK_FACTOR;
-
-    cacheReadout.textContent = Math.round(ratio * 100) + "%";
-    const inputCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
-    const outputCost = (outT * m.out) / 1e6;
-    breakdown.textContent = fmtTokens(hit) + " @ " + usd(m.hit) + " (hit) · " +
-      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss) · " +
-      fmtTokens(outT) + " @ " + usd(m.out) + " (out) = " + fmtTotal(inputCost + outputCost);
-
-    // Preview-aware prominence: card 1 is always the active-window total. When
-    // the playhead sits in a peak window, card 1 flips to PEAK and the save
-    // card becomes "Save by waiting". Live mode stays off-peak-first.
-    const activePeak = preview !== null && isPeak(preview);
-    const rOff = $("r-off"), rPeak = $("r-peak"), rSave = $("r-save");
-    rOff.textContent = fmtTotal(activePeak ? peak : off);
-    rPeak.textContent = fmtTotal(activePeak ? off : peak);
-    offLabel.textContent = (activePeak ? "Peak" : "Off-peak") + (preview !== null ? " · preview" : "");
-    pkLabel.textContent = activePeak ? "Off-peak" : "Peak";
-    rOff.className = "r-val " + (activePeak ? "pk" : "off"); // prominent: amber when peak is active, emerald otherwise
-    rPeak.className = "r-val dim";  // secondary: muted
-    const save = peak - off;
-    const savePct = Math.round((save / peak) * 100) + "%";
-    if (activePeak) {
-      svLabel.textContent = "Save by waiting";
-      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
-      svNote.textContent = "Queue off-peak to save " + fmtTotal(save);
-    } else {
-      svLabel.textContent = "You save";
-      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
-      svNote.textContent = "";
-    }
+    const cny = currency === "cny";
+    const rates = cny ? CNY_MODELS[m.id] : m; // MODELS rows already carry {hit, miss, out}
+    // Round first, then subtract, so the headline is exactly the difference of
+    // the two figures on screen.
+    const q = {
+      offCold: Math.round(annualCost(rates, 0, 1)),
+      offHot: Math.round(annualCost(rates, MAX_RATIO, 1)),
+      pkCold: Math.round(annualCost(rates, 0, PEAK_FACTOR)),
+      pkHot: Math.round(annualCost(rates, MAX_RATIO, PEAK_FACTOR)),
+    };
+    for (const k in QUADS) QUADS[k].textContent = fmtYear(q[k], cny);
+    const save = q.pkCold - q.offHot; // worst quadrant → best quadrant
+    $("s-save").textContent = fmtYear(save, cny) + "/yr";
+    $("s-save-note").textContent = "−" + ((save / q.pkCold) * 100).toFixed(1) + "% vs peak with a cold cache · " +
+      Math.round(MAX_RATIO * 100) + "% is the ceiling (the prefix is that share of the input)";
   }
-
-  // Preset chips fill + recalc (type="button", never a form submit).
-  for (const chip of document.querySelectorAll(".chip")) {
-    chip.addEventListener("click", () => {
-      const el = $(chip.dataset.target);
-      el.value = fmtTokens(Number(chip.dataset.tokens));
-      el.blur();  // Trigger blur listener for immediate normalization.
-    });
-  }
-  // Blur normalizes the raw SI value into grouped digits.
-  for (const el of [calcIn, calcOut]) {
-    el.addEventListener("blur", () => { el.value = fmtTokens(parseTokens(el.value)); recalc(); });
-  }
-  document.getElementById("calc-form").addEventListener("input", recalc);
-  // Direct listener on cache-ratio ensures reliable updates; form bubbling unreliable for range inputs.
-  cacheRatio.addEventListener("input", () => {
-    const pct = Math.round(Number(cacheRatio.value)) + "%";
-    cacheRatio.setAttribute("aria-valuetext", pct + " cache hit ratio");
-    recalc();
-  });
-  // Vision shows the image-count field; other models hide it.
-  sel.addEventListener("change", () => {
-    if (imgField) imgField.hidden = sel.value !== "vision";
-    // Reset image count when switching from vision to other models.
-    if (sel.value !== "vision") {
-      calcImgs.value = "0";
-    }
-    recalc();
-  });
-  // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;
-  // LIVE resets prominence. Only listeners — Phase 2 functions untouched.
-  scrub.addEventListener("input", recalc);
-  liveBtn.addEventListener("click", recalc);
-  recalc();
+  sel.addEventListener("change", renderSavings);
+  renderSavings();
 
   /* ============================================================
    * Phase 5 — dev actionability: cron / SDK export drawer.
@@ -488,12 +431,58 @@ if (typeof document !== "undefined") {
     ].join("\n");
   };
 
+  // Cache-optimal prompt skeleton — the 8 rules as runnable Python. Frozen
+  // module-level prefix, variable turn last, two warm-up calls before fan-out
+  // (common-prefix detection needs >1 request), append-only history, hit rate
+  // logged from usage.
+  const buildCache = () => {
+    const m = activeModel();
+    return [
+      "import json, os",
+      "from openai import OpenAI",
+      "",
+      "client = OpenAI(api_key=os.environ[\"DEEPSEEK_API_KEY\"],",
+      "                base_url=\"https://api.deepseek.com\")",
+      "MODEL = \"" + m.id + "\"  # " + m.name,
+      "",
+      "# Built ONCE at import - byte-identical on every request. Order is",
+      "# load-bearing: system -> tools -> few-shots -> docs -> user turn last.",
+      "# No timestamps, no UUIDs, no randomly sampled few-shots in here.",
+      "STABLE_PREFIX = [",
+      "    {\"role\": \"system\", \"content\": SYSTEM},",
+      "    # sort_keys pins the serialization; a reordered dict is a new prefix",
+      "    {\"role\": \"system\", \"content\": json.dumps(TOOLS, sort_keys=True)},",
+      "    *FEW_SHOTS,",
+      "    {\"role\": \"system\", \"content\": DOCUMENTS},",
+      "]",
+      "",
+      "def ask(history, question):",
+      "    # history is append-only: summarizing it rewrites the prefix and",
+      "    # forfeits the whole conversation's cache.",
+      "    messages = STABLE_PREFIX + history + [{\"role\": \"user\", \"content\": question}]",
+      "    r = client.chat.completions.create(model=MODEL, messages=messages)",
+      "    u = r.usage",
+      "    hit, miss = u.prompt_cache_hit_tokens, u.prompt_cache_miss_tokens",
+      "    print(\"cache hit rate %.3f\" % (hit / max(1, hit + miss)))  # alert on drops",
+      "    return r.choices[0].message.content",
+      "",
+      "# Warm the shared prefix before fanning out. The common prefix becomes a",
+      "# cache unit only after DeepSeek has seen it across requests - in the",
+      "# official example the first TWO miss and the third is the first to hit,",
+      "# so two probes with different tails, then the real burst.",
+      "for probe in (\"warmup a\", \"warmup b\"):",
+      "    ask([], probe)",
+      "answers = [ask([], q) for q in QUESTIONS]",
+    ].join("\n");
+  };
+
   const TABS = [
     { key: "cron", btn: $("tab-cron"), panel: $("panel-cron") },
     { key: "py", btn: $("tab-py"), panel: $("panel-py") },
     { key: "ts", btn: $("tab-ts"), panel: $("panel-ts") },
+    { key: "cache", btn: $("tab-cache"), panel: $("panel-cache") },
   ];
-  const BUILDERS = { cron: buildCron, py: buildPy, ts: buildTs };
+  const BUILDERS = { cron: buildCron, py: buildPy, ts: buildTs, cache: buildCache };
   const exportDetails = $("export-drawer");
   const exportNext = $("export-next");
   const copyBtn = $("copy-btn");
@@ -559,6 +548,8 @@ if (typeof document !== "undefined") {
   globalThis.DS_UI.buildCron = buildCron;
   globalThis.DS_UI.buildPy = buildPy;
   globalThis.DS_UI.buildTs = buildTs;
+  globalThis.DS_UI.buildCache = buildCache;
+  globalThis.DS_UI.renderSavings = renderSavings;
   globalThis.DS_UI.renderExport = renderExport;
   globalThis.DS_UI.copyActive = () => copyBtn.dispatchEvent(new Event("click"));
   globalThis.DS_UI._exportTimer = setInterval(renderExport, 30000); // keep the "next window" line current

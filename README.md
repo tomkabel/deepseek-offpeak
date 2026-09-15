@@ -2,7 +2,7 @@
 
 # 🐴 DeepSeek Off-Peak
 
-**Live peak/off-peak clock, rate matrix & cost calculator for DeepSeek API pricing**
+**Live peak/off-peak clock, rate matrix & prompt-cache playbook for DeepSeek API pricing**
 
 Zero-dependency · static · deployed on Cloudflare Pages
 
@@ -17,23 +17,25 @@ Zero-dependency · static · deployed on Cloudflare Pages
 DeepSeek API pricing has an off-peak window (01:00–04:00 & 06:00–10:00 UTC, all
 weekend) where every token costs **exactly half** the peak rate. This is a
 single-page tool that tells you — in one glance — whether you're in the cheap
-window right now, when it flips, and what a given workload actually costs in
-each window.
+window right now, when it flips, and how to stack the bigger lever on top:
+prompt caching, where a Flash cache hit is **50× cheaper** than a miss.
 
 - **Live status** — OFF-PEAK / PEAK with a natural-language countdown
   ("Off-peak for the next 18h 57m") and a unified `Local → Beijing` dual-zone
   clock pill (billing runs on Beijing time).
 - **Scrubbable 24h ribbon** — dual-axis (Local + Beijing) timeline; drag the
-  playhead to preview status, rates and calculator results at any hour.
+  playhead to preview status and rates at any hour.
 - **Rate matrix** — right-aligned, decimal-aligned tabular pricing for V4
   Flash / Pro / Vision with off-peak ↔ peak deltas, concurrency and USD/CNY
   toggle (indicative rate).
-- **Cost calculator** — SI token inputs (`1M`, `500k`, `128k`), preset chips,
-  cache-hit-ratio slider, and a live savings breakdown.
-- **Automation snippets** — copy-ready cron / Python / TypeScript snippets
-  for scheduling jobs into the off-peak window.
+- **Cache playbook** — how DeepSeek decides a hit, plus 8 rules for keeping a
+  prompt prefix cacheable, with a 2×2 annual-cost matrix (off-peak/peak ×
+  cold/95% cached) computed live from the rate table.
+- **Automation snippets** — copy-ready cron / Python / TypeScript snippets for
+  scheduling jobs into the off-peak window, and a cache-optimal prompt skeleton.
 
-Built for the developer question "should I run this now, or in 3 hours?"
+Built for the two developer questions "should I run this now, or in 3 hours?"
+and "why is my input bill 50× what it should be?"
 
 ## Quick start
 
@@ -53,13 +55,13 @@ No build step, no dependencies, no external fonts or JS.
 
 | Path | Purpose |
 |---|---|
-| `index.html` | Semantic markup — hero/status, ribbon, rate table, calculator, export drawer |
+| `index.html` | Semantic markup — hero/status, ribbon, rate table, cache playbook, export drawer |
 | `styles.css` | OKLCH token system, aurora-glass theme, responsive + reduced-motion |
 | `app.js` | Pure schedule logic (`globalThis.DS`) + browser-only UI wiring |
-| `test.mjs` | Node self-check for `isPeak`, `nextTransition`, rates, formatting |
+| `test.mjs` | Node self-check for `isPeak`, `nextTransition`, rates, `annualCost`, snippets |
 | `audit.mjs` | WCAG contrast audit of the OKLCH token pairs (all pass AA) |
 | `dist/` | Deploy artifact — mirrors root (kept in sync) |
-| `PLAN.md` | Design history: v1 → v4 critique rounds, decisions & rejections |
+| `PLAN.md` | Design history: v1 → v5 critique rounds, decisions & rejections |
 | `_headers` | Security headers (nosniff, frame denial, permissions policy) |
 
 ## How the schedule works

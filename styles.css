@@ -66,7 +66,9 @@ body {
 /* layout shells (for later phases) */
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  /* min() guards the floor: a bare minmax(340px,…) forces a 340px track inside
+     a 312px container at 360px viewports and overflows the page. */
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: 20px;
 }
 
@@ -345,7 +347,6 @@ h2 small { font-weight: 400; color: var(--text-muted); font-size: 13px; margin-l
 
 /* shared card-tier surface: surface-1 fill + hairline border + specular + ambient shadow */
 .table-scroll,
-#calc-form,
 .r,
 .panel,
 .result {
@@ -429,111 +430,135 @@ td.model { font-weight: 600; white-space: nowrap; }
 }
 .note { font-size: 13px; color: var(--text-muted); margin-top: 14px; }
 
-/* calculator — Phase 4: config panel (left) + savings panel (right) */
-.calc-grid { align-items: start; }
-#calc-form {
-  display: grid;
-  gap: 18px;
-  padding: 22px;
-  align-content: start;
-}
-#calc-form .field { display: flex; flex-direction: column; gap: 7px; }
-#calc-form .field[hidden] { display: none; }
-#calc-form .field > label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 13px;
+/* cache playbook — v5: mechanics + 8 rules (left) | savings panel (right) */
+.play-grid { align-items: start; }
+.play-col { display: grid; gap: 20px; align-content: start; }
+.lede {
+  margin: -8px 0 18px;
+  max-width: 76ch;
+  font-size: 14.5px;
   color: var(--text-secondary);
 }
-#calc-form select,
-#calc-form input[type="text"] {
+.lede b { color: var(--off); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* mechanics card — reuses the .panel card tier */
+.mech h3 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.mech p { margin: 0 0 10px; font-size: 13.5px; color: var(--text-muted); }
+.mech p b { color: var(--text); font-weight: 600; }
+.mech-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.mech-list b { color: var(--off); font-weight: 600; }
+.mech-src { margin: 0; font-size: 12.5px; }
+.mech-src a { color: var(--off); }
+.mech-src a:hover { color: var(--emerald-bright); text-decoration: underline; }
+
+/* the 8 rules — CSS counter in the emerald token, no marker glyphs */
+.rules {
+  list-style: none;
+  counter-reset: rule;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.rules li {
+  counter-increment: rule;
+  position: relative;
+  padding: 13px 16px 13px 44px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.rules li::before {
+  content: counter(rule);
+  position: absolute;
+  left: 15px;
+  top: 14px;
+  font: 700 12px var(--mono);
+  color: var(--off);
+  font-variant-numeric: tabular-nums;
+}
+.rules b { display: block; margin-bottom: 3px; font-size: 14px; color: var(--text); }
+.rules code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+
+/* savings panel — model select + 2×2 quadrant matrix + headline save card */
+.s-model { display: flex; flex-direction: column; gap: 7px; }
+.s-model label { font-size: 13px; color: var(--text-secondary); }
+.play select {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 15px;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--sans);
   width: 100%;
 }
-#calc-form select { font-family: var(--sans); }
 @media (prefers-reduced-motion: no-preference) {
-  #calc-form select,
-  #calc-form input[type="text"] {
-    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-  }
-  #calc-form select:focus,
-  #calc-form input[type="text"]:focus {
-    transform: scale(1.02);
-    border-color: var(--border-focus);
-    box-shadow: 0 0 0 4px var(--emerald-surface);
-  }
+  .play select { transition: border-color 150ms ease, box-shadow 150ms ease; }
+  .play select:focus { border-color: var(--border-focus); box-shadow: 0 0 0 4px var(--emerald-surface); }
 }
-/* preset chips — real buttons, keyboard-focusable, never submit */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  appearance: none;
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  font: 600 11.5px var(--mono);
-  font-variant-numeric: tabular-nums;
-  padding: 3px 11px;
-  cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
-}
-.chip:hover {
-  border-color: oklch(0.78 0.18 155 / 0.45);
-  color: var(--off);
-  background: var(--emerald-surface);
-}
-/* cache-hit ratio slider — native range, emerald thumb on recessed track */
-#cache-ratio {
-  appearance: none;
-  -webkit-appearance: none;
+.s-scenario { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+/* rows off-peak/peak × cols cold/95% cached — off-peak emerald, peak amber */
+.s-matrix {
   width: 100%;
-  height: 8px;
-  margin: 4px 0 2px;
-  border-radius: 999px;
+  min-width: 0; /* overrides the 600px rate-table minimum */
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
-  cursor: pointer;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-#cache-ratio::-webkit-slider-runnable-track { background: transparent; }
-#cache-ratio::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, var(--emerald-bright), var(--off));
-  border: 2px solid var(--bg-canvas);
-  box-shadow: 0 0 0 1px var(--border-subtle), 0 0 14px oklch(0.78 0.18 155 / 0.45);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+.s-matrix th, .s-matrix td { padding: 11px 13px; text-align: right; }
+.s-matrix thead th {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
 }
-#cache-ratio::-webkit-slider-thumb:hover { transform: scale(1.12); }
-#cache-ratio::-moz-range-track { background: transparent; }
-#cache-ratio::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, var(--emerald-bright), var(--off));
-  border: 2px solid var(--bg-canvas);
-  box-shadow: 0 0 0 1px var(--border-subtle), 0 0 14px oklch(0.78 0.18 155 / 0.45);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+.s-matrix tbody th {
+  text-align: left;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
-#cache-ratio::-moz-range-thumb:hover { transform: scale(1.12); }
-#cache-readout {
+.s-matrix tbody td {
+  border-bottom: 0;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 700;
-  color: var(--off);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
+.s-matrix tbody tr + tr th, .s-matrix tbody tr + tr td { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.s-matrix tbody td.off { color: var(--off); }
+.s-matrix tbody td.pk { color: var(--peak); }
+
 /* segmented control (rates currency toggle) — hidden-but-focusable native radios, glass pill checked state */
 .seg {
   display: grid;
@@ -583,7 +608,7 @@ td.model { font-weight: 600; white-space: nowrap; }
   outline-offset: 2px;
 }
 
-/* result panel — savings side: breakdown line + emerald cards + #export-slot (Phase 5) */
+/* savings panel — quadrant matrix + emerald save card + #export-slot (Phase 5) */
 .result {
   display: flex;
   flex-direction: column;
@@ -596,15 +621,6 @@ td.model { font-weight: 600; white-space: nowrap; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.breakdown {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .result .r {
   background: var(--surface-2);
@@ -689,6 +705,9 @@ td.model { font-weight: 600; white-space: nowrap; }
 .export[open] summary::before { transform: rotate(90deg); }
 .export-body {
   display: grid;
+  /* minmax(0,…) beats the default min-width:auto — otherwise the longest line
+     of the snippet sizes the track and the <pre>'s overflow-x never engages. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
 }
@@ -760,13 +779,18 @@ footer p { font-size: 12.5px; color: var(--text-muted); margin: 0; }
   html { scroll-behavior: auto; }
   .seg-btn span { transition: none; }
   tbody tr { transition: none; }
-  .chip,
-  #cache-ratio::-webkit-slider-thumb,
-  #cache-ratio::-moz-range-thumb { transition: none; }
 }
 
 @media (max-width: 520px) {
   .clocks { flex-direction: column; gap: 8px; }
   .ribbon-axis { font-size: 10px; }
   .ribbon-axis--beijing { font-size: 11px; }
+  /* the quadrant matrix must still read at 360px: tighter cells, smaller figures */
+  .panel, .result { padding: 16px; }
+  .s-matrix th, .s-matrix td { padding: 9px 8px; }
+  .s-matrix thead th { font-size: 10px; letter-spacing: 0.03em; }
+  .s-matrix tbody th { font-size: 10.5px; letter-spacing: 0.03em; }
+  .s-matrix tbody td { font-size: 14px; }
+  .rules li { padding: 12px 13px 12px 38px; }
+  .rules li::before { left: 13px; }
 }

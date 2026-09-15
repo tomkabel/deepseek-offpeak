@@ -179,3 +179,82 @@ decks, white primary CTA (would compete MORE with metrics), slider readout
 relocation (label already carries the live %).
 Frozen-logic guard held: node test.mjs unchanged and green; only the
 browser-only UI block of app.js touched.
+
+## v5 — calculator → cache playbook (2026-09-15)
+
+**Why:** the calculator answered "what does this cost?" — a question the user
+already knows the answer to. The bigger lever is the one nobody tunes: on
+Flash a cache hit is **50×** cheaper than a miss ($0.003 vs $0.15/1M), so
+prompt-prefix discipline beats window-shifting. Off-peak alone is −50%; ~95%
+cache hits alone is −85%; both stack to −92.6%. The tool should teach the
+bigger lever and prove it with one number.
+
+### Mechanics (api-docs.deepseek.com/guides/kv_cache, scraped 2026-09-15)
+
+A hit requires a request to **fully match a persisted cache prefix unit from
+token 0**. Partial/middle matches never hit. Units are persisted three ways:
+
+1. **Request boundaries** — every request persists two units: end of user
+   input, end of model output. (→ append-only multi-turn hits for free.)
+2. **Common-prefix detection** — a prefix shared across requests is persisted
+   as its own unit *once DeepSeek has detected it*. In DeepSeek's own long-text
+   example requests #1 and #2 miss and #3 hits. (→ cold fan-out is all misses;
+   warm the prefix first.)
+3. **Fixed token intervals** — long inputs/outputs get units carved at
+   intervals so a long prefix is never wholly uncacheable.
+
+Best-effort, no 100% guarantee. Cache builds in seconds, is evicted hours-to-
+days after last use. Free, automatic, no code change, no storage fee. Sampling
+randomness is unaffected (only the prefix is reused, decoding still runs).
+Monitor `usage.prompt_cache_hit_tokens / prompt_cache_miss_tokens`.
+
+### Playbook (8 rules, shipped as the left column)
+
+1. Freeze prefix order: system → tools → few-shot → documents → user turn LAST.
+2. Evict volatile tokens from the head (timestamps, UUIDs, "today is…",
+   randomly sampled few-shots). One changed token at position 12 rebills the
+   whole prefix.
+3. Serialize deterministically — stable JSON key order, stable tool order,
+   identical whitespace.
+4. Append, never rewrite history. Summarizing/trimming old turns rewrites the
+   prefix and forfeits the whole conversation's cache.
+5. Warm the prefix before fan-out (rule 2 of mechanics): two cheap calls with
+   different tails, then parallelize. One is not enough — the common prefix
+   unit only exists once DeepSeek has seen the prefix across requests, which
+   is why #1 and #2 both miss in the official example. Never launch N cold
+   parallel requests on a fresh document.
+6. Batch by prefix, not by arrival — unused prefixes are evicted in hours.
+7. Ship one prompt version at a time; every live variant is a separate prefix
+   that must be warmed and kept warm on its own share of traffic.
+8. Measure: hit rate = hit/(hit+miss) per request, alert on drops. A silent
+   prefix change is a 50× price increase.
+
+Then stack off-peak on the residual misses.
+
+### Anchor scenario (computed live from MODELS, not hardcoded)
+
+Docs/support assistant on Flash: 12,000 req/day · 30,000 input tokens of which
+28,500 are the stable prefix (system 1.2k + tools 1.8k + 20 few-shots 6.5k +
+retrieved docs 19k) and 1,500 are the live question · 700 output · 365 days.
+Max achievable hit ratio = prefix share = 95%.
+
+| | no cache | 95% cache |
+|---|---|---|
+| peak | $43,099/yr | $6,399/yr |
+| off-peak | $21,550/yr | **$3,200/yr** |
+
+Headline: **$39,899/yr saved, −92.6%**.
+
+### Build
+
+- `index.html`: `<section class="calc">` (form + result) → `<section class="play">`:
+  mechanics card + 8-rule list (left) | savings panel (right). The model
+  `<select>` survives as the one control — it drives both the savings figure
+  and the export snippets. Everything else in the form is deleted.
+- `app.js`: delete `parseTokens`/`fmtTokens`/`recalc`/chip+slider+image wiring;
+  add `annualCost()` + `renderSavings()` reading `MODELS`/`CNY_MODELS` so the
+  matrix follows the currency toggle and never hardcodes a price.
+- Export drawer kept; adds a 4th **Cache** tab — a copy-ready cache-optimal
+  prompt skeleton (stable prefix, variable tail, warm-up, hit-rate logging).
+- `test.mjs`: calculator assertions → `annualCost` quadrant assertions.
+- `styles.css`: `.play` / `.rules` / `.s-matrix`; dead calculator rules removed.

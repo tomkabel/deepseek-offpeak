@@ -1,7 +1,7 @@
 # AGENTS.md — DeepSeek Off-Peak
 
 Zero-dependency vanilla static site (no build step, no npm, no frameworks).
-Live clock / rate matrix / cost calculator for DeepSeek off-peak API pricing.
+Live clock / rate matrix / prompt-cache playbook for DeepSeek off-peak API pricing.
 
 ## Hard rules
 
@@ -19,14 +19,14 @@ Live clock / rate matrix / cost calculator for DeepSeek off-peak API pricing.
 
 | Path | Purpose |
 |---|---|
-| `index.html` | Semantic markup — hero/status, ribbon, rate table, calculator |
+| `index.html` | Semantic markup — hero/status, ribbon, rate table, cache playbook |
 | `styles.css` | OKLCH token system, aurora-glass theme, reduced-motion |
 | `app.js` | Pure schedule logic (`globalThis.DS`) + browser UI wiring |
 | `test.mjs` | Node self-check pinning schedule boundaries + rates (Node 18+) |
 | `audit.mjs` | WCAG contrast audit of OKLCH token pairs |
 | `dist/` | Deploy artifact (mirrors root) |
 | `_headers` | Security headers (nosniff, frame denial, permissions policy) |
-| `PLAN.md` | Design history v1→v4, decisions & rejections |
+| `PLAN.md` | Design history v1→v5, decisions & rejections |
 
 ## Deploy
 

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeepSeek Off-Peak — live peak/off-peak clock &amp; rate calculator</title>
-  <meta name="description" content="Live DeepSeek API peak/off-peak status, off-peak rates, and a token cost calculator. Off-peak is 50% of peak.">
+  <title>DeepSeek Off-Peak — live peak/off-peak clock &amp; prompt-cache playbook</title>
+  <meta name="description" content="Live DeepSeek API peak/off-peak status, official rate matrix, and a prompt-cache playbook: on Flash a cache hit is 50x cheaper than a miss, off-peak is another 50%.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#06090f">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%232ee6a8'/%3E%3C/svg%3E">
@@ -74,53 +74,56 @@
           <tbody id="rate-body"></tbody>
         </table>
       </div>
-      <p class="note">Off-peak is 50% of peak — peak is 2× off-peak. Cache-hit inputs are ~31× cheaper than cache-miss — reuse your prompts. CNY column shows DeepSeek's official ¥ prices (ZH pricing page), not an FX conversion.</p>
+      <p class="note">Off-peak is 50% of peak — peak is 2× off-peak. Cache-hit inputs are 50× cheaper than cache-miss on Flash, 30× on Pro — see the playbook below. CNY column shows DeepSeek's official ¥ prices (ZH pricing page), not an FX conversion.</p>
     </section>
 
-    <section class="calc" aria-labelledby="calc-label">
-      <h2 id="calc-label">Cost calculator</h2>
-      <div class="grid-2 calc-grid">
-        <form id="calc-form">
-          <div class="field">
+    <section class="play" aria-labelledby="play-label">
+      <h2 id="play-label">Cache playbook</h2>
+      <p class="lede">On Flash a cache hit costs <b>$0.003</b>/1M against <b>$0.15</b>/1M for a miss — <b>50×</b> cheaper. Prefix discipline is the bigger lever; off-peak then halves whatever still misses.</p>
+      <div class="grid-2 play-grid">
+        <div class="play-col">
+          <div class="panel mech">
+            <h3>How DeepSeek decides</h3>
+            <p>A request hits only if it <b>fully matches a persisted cache prefix unit starting at token 0</b>. A match that starts in the middle never hits. Caching is best-effort — automatic, free, no storage fee, and sampling randomness is untouched because only the prefix is reused.</p>
+            <p>Prefix units get persisted three ways:</p>
+            <ul class="mech-list">
+              <li><b>Request boundaries</b> — every request persists two units, one at end of user input and one at end of model output. Append-only multi-turn therefore hits for free.</li>
+              <li><b>Common-prefix detection</b> — a prefix shared across requests becomes its own unit once DeepSeek has detected it. In DeepSeek's own long-text example requests #1 and #2 miss and #3 is the first to hit.</li>
+              <li><b>Fixed token intervals</b> — long inputs and outputs are carved into units at intervals, so a long prefix is never wholly uncacheable.</li>
+            </ul>
+            <p class="mech-src">Cache builds in seconds and is evicted hours to days after last use. <a href="https://api-docs.deepseek.com/guides/kv_cache" rel="noopener">KV cache guide&nbsp;↗</a></p>
+          </div>
+          <ol class="rules">
+            <li><b>Freeze the prefix order</b> System → tools → few-shots → documents → user turn last. Everything stable goes in front so only the tail ever changes between requests.</li>
+            <li><b>Evict volatile tokens from the head</b> Timestamps, request UUIDs, “today is…”, randomly sampled few-shots. One changed token at position 12 rebills the entire prefix behind it at miss price.</li>
+            <li><b>Serialize deterministically</b> Stable JSON key order, stable tool order, identical whitespace — <code>json.dumps(obj, sort_keys=True, separators=(",", ":"))</code>. A dict that iterates differently is a different prefix.</li>
+            <li><b>Append, never rewrite history</b> Each request already persists units at end-of-input and end-of-output, so appended turns hit for free. Summarizing or trimming old turns rewrites the prefix and forfeits the whole conversation's cache.</li>
+            <li><b>Warm the prefix before fan-out</b> A shared prefix becomes its own unit only after DeepSeek has seen it across requests — in DeepSeek's own example the first two miss and the third is the first to hit. Send two cheap calls with different tails, then parallelize; a cold burst of N requests is N misses.</li>
+            <li><b>Batch by prefix, not by arrival</b> Unused units are evicted within hours. Group the work that shares a document and run it while that prefix is still resident.</li>
+            <li><b>Ship one prompt version at a time</b> Every live variant is a separate prefix that has to be warmed and then kept warm on its own share of traffic. A 50/50 A/B doubles the cold-start misses and halves each prefix's odds of surviving the eviction window; a gradual rollout is worse, because the prefix keeps moving.</li>
+            <li><b>Measure the hit rate</b> <code>hit / (hit + miss)</code> from <code>usage</code> on every request, with an alert on drops. A silent prefix change is a 50× price increase that otherwise surfaces on the invoice.</li>
+          </ol>
+        </div>
+        <div class="result">
+          <div class="s-model">
             <label for="model">Model</label>
             <select id="model"></select>
           </div>
-          <div class="field">
-            <label for="calc-in">Input tokens</label>
-            <input id="calc-in" type="text" inputmode="numeric" pattern="[0-9kKmM,]*" autocomplete="off" spellcheck="false" value="1,000,000">
-            <div class="chips" role="group" aria-label="Input token presets">
-              <button type="button" class="chip" data-target="calc-in" data-tokens="8000">8k</button>
-              <button type="button" class="chip" data-target="calc-in" data-tokens="32000">32k</button>
-              <button type="button" class="chip" data-target="calc-in" data-tokens="128000">128k</button>
-              <button type="button" class="chip" data-target="calc-in" data-tokens="1000000">1M</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="calc-out">Output tokens</label>
-            <input id="calc-out" type="text" inputmode="numeric" pattern="[0-9kKmM,]*" autocomplete="off" spellcheck="false" value="1,000,000">
-            <label for="calc-imgs" hidden>Images (vision)</label>
-            <input id="calc-imgs" type="number" min="0" max="100" step="1" value="0" hidden>
-            <div class="chips" role="group" aria-label="Output token presets">
-              <button type="button" class="chip" data-target="calc-out" data-tokens="500">500</button>
-              <button type="button" class="chip" data-target="calc-out" data-tokens="4000">4k</button>
-              <button type="button" class="chip" data-target="calc-out" data-tokens="16000">16k</button>
-              <button type="button" class="chip" data-target="calc-out" data-tokens="1000000">1M</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="cache-ratio">Prompt cache hit ratio <b id="cache-readout">80%</b></label>
-            <input type="range" id="cache-ratio" min="0" max="100" step="1" value="80">
-          </div>
-        </form>
-        <div class="result" id="result">
-          <!-- aria-live covers only the live numbers; the interactive export
-               drawer sits OUTSIDE it (live regions must not contain
-               focusable elements). -->
+          <p class="s-scenario">Docs assistant: 12,000 requests/day · 30,000 input tokens of which 28,500 are a stable prefix · 700 output · 365 days.</p>
+          <!-- aria-live covers only the live numbers; the model select and the
+               interactive export drawer sit OUTSIDE it (live regions must not
+               contain focusable elements). -->
           <div class="r-live" aria-live="polite">
-            <p class="breakdown" id="calc-breakdown">…</p>
-            <div class="r"><span class="r-label" id="r-off-label">Off-peak</span><span class="r-val off" id="r-off">$0</span></div>
-            <div class="r"><span class="r-label" id="r-peak-label">Peak</span><span class="r-val" id="r-peak">$0</span></div>
-            <div class="r"><span class="r-label" id="r-save-label">You save</span><span class="r-val save" id="r-save">$0</span><span class="r-note" id="r-save-note"></span></div>
+            <table class="s-matrix">
+              <thead>
+                <tr><td class="s-corner"></td><th scope="col">Cold</th><th scope="col">95% cached</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Off-peak</th><td class="off" id="q-off-cold">—</td><td class="off" id="q-off-hot">—</td></tr>
+                <tr><th scope="row">Peak</th><td class="pk" id="q-pk-cold">—</td><td class="pk" id="q-pk-hot">—</td></tr>
+              </tbody>
+            </table>
+            <div class="r"><span class="r-label">You save</span><span class="r-val save" id="s-save">—</span><span class="r-note" id="s-save-note"></span></div>
           </div>
           <div id="export-slot">
             <details class="export" id="export-drawer">
@@ -131,6 +134,7 @@
                   <button type="button" role="tab" id="tab-cron" aria-selected="true" aria-controls="panel-cron">Cron</button>
                   <button type="button" role="tab" id="tab-py" aria-selected="false" aria-controls="panel-py">Python</button>
                   <button type="button" role="tab" id="tab-ts" aria-selected="false" aria-controls="panel-ts">TypeScript</button>
+                  <button type="button" role="tab" id="tab-cache" aria-selected="false" aria-controls="panel-cache">Cache</button>
                 </div>
                 <div class="export-panel" role="tabpanel" id="panel-cron" aria-labelledby="tab-cron">
                   <pre><code id="code-cron" class="code"></code></pre>
@@ -140,6 +144,9 @@
                 </div>
                 <div class="export-panel" role="tabpanel" id="panel-ts" aria-labelledby="tab-ts" hidden>
                   <pre><code id="code-ts" class="code"></code></pre>
+                </div>
+                <div class="export-panel" role="tabpanel" id="panel-cache" aria-labelledby="tab-cache" hidden>
+                  <pre><code id="code-cache" class="code"></code></pre>
                 </div>
                 <button type="button" class="copy-btn" id="copy-btn" aria-live="polite">Copy snippet</button>
               </div>
@@ -151,10 +158,10 @@
   </main>
 
   <footer class="wrap">
-    <p>Unofficial tool. Rates &amp; schedule verified <time datetime="2026-08-26">2026-08-26</time> against <a href="https://api-docs.deepseek.com/quick_start/pricing/" rel="noopener">DeepSeek API pricing docs</a> — verify before relying on it.</p>
+    <p>Unofficial tool. Rates, schedule &amp; cache mechanics verified <time datetime="2026-09-15">2026-09-15</time> against the <a href="https://api-docs.deepseek.com/quick_start/pricing/" rel="noopener">DeepSeek API pricing docs</a> and the <a href="https://api-docs.deepseek.com/guides/kv_cache" rel="noopener">KV cache guide</a> — verify before relying on it.</p>
   </footer>
 
-  <noscript>This tool needs JavaScript for the live clock and calculator.</noscript>
+  <noscript>This tool needs JavaScript for the live clock and the savings figures.</noscript>
   <script src="app.js"></script>
 </body>
 </html>

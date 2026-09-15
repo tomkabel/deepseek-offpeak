@@ -85,6 +85,26 @@ const py = DS_UI.buildPy();
 eq(py.includes("deepseek-flash"), true, "py snippet vision id");
 const ts = DS_UI.buildTs();
 eq(ts.includes("deepseek-flash"), true, "ts snippet vision id");
+const cache = DS_UI.buildCache();
+eq(cache.includes("deepseek-flash"), true, "cache snippet vision id");
+eq(cache.includes("prompt_cache_hit_tokens"), true, "cache snippet logs hit rate");
+eq(/^[\x20-\x7e\n]*$/.test(cache), true, "cache snippet is plain ASCII (no smart quotes/arrows)");
+
+// Cache playbook quadrants — anchor scenario on Flash (MODELS[0]), rounded to
+// whole dollars. Off-peak = ×1, peak = ×PEAK_FACTOR; cold = 0% hits, hot = 95%.
+const S = DS_UI.SCENARIO;
+const MAX_RATIO = S.prefixT / S.inT;
+eq(MAX_RATIO, 0.95, "max hit ratio = prefix share");
+const flash = DS.MODELS[0];
+const yr = (ratio, mul) => Math.round(DS_UI.annualCost(flash, ratio, mul));
+eq(yr(0, DS.PEAK_FACTOR), 43099, "peak + cold");
+eq(yr(0, 1), 21550, "off-peak + cold");
+eq(yr(MAX_RATIO, DS.PEAK_FACTOR), 6399, "peak + 95% cached");
+eq(yr(MAX_RATIO, 1), 3200, "off-peak + 95% cached");
+// Headline = difference of the two figures on screen (round, then subtract).
+const saved = yr(0, DS.PEAK_FACTOR) - yr(MAX_RATIO, 1);
+eq(saved, 39899, "annual saving, worst quadrant to best");
+eq(((saved / yr(0, DS.PEAK_FACTOR)) * 100).toFixed(1), "92.6", "percent saved");
 
 // formatting
 eq(DS.usd(0.007), "$0.007", "usd 0.007");

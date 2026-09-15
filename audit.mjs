@@ -55,6 +55,9 @@ const pairs = [
   ["emerald-active on surface-1", T.em, T.surface1],
   ["amber-peak on canvas",        T.am, T.canvas],
   ["amber-peak on surface-1",     T.am, T.surface1],
+  // v5 savings matrix sits on surface-2 (emerald off-peak row, amber peak row)
+  ["emerald-active on surface-2", T.em, T.surface2],
+  ["amber-peak on surface-2",     T.am, T.surface2],
   ["emerald-bright on canvas",    T.emB, T.canvas],
   ["amber-bright on canvas",      T.amB, T.canvas],
   ["gradient text (0.84 mid) on canvas", oklchToLinearRgb(0.84, 0.15, 157), T.canvas],
