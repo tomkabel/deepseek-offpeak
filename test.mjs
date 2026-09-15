@@ -67,23 +67,24 @@ eq(DS.MODELS.length, 3, "3 models");
 eq(DS.MODELS[1].hit, 0.022, "pro cache-hit off-peak");
 eq(DS.MODELS[1].out * DS.PEAK_FACTOR, 3.96, "pro output peak = 2x");
 
-// CNY official table (ZH pricing page, fetched 2026-08-26): flash hit ¥0.05, miss ¥1.5, out ¥4.5
+// CNY official table (ZH pricing page, fetched 2026-09-15): flash hit ¥0.02, miss ¥1, out ¥4
 const CNY = DS_UI.CNY_MODELS;
-eq(CNY.flash.hit, 0.05, "cny flash hit");
+eq(CNY.flash.hit, 0.02, "cny flash hit");
 eq(CNY.pro.miss, 4.5, "cny pro miss");
-eq(CNY.vision.out, 4.5, "cny vision out");
-// official implied FX ≈ 6.82 (not 7.1)
+eq(CNY.vision.out, 4, "cny vision out");
+// official implied FX ≈ 6.82 (not 7.1) — still holds on the unchanged Pro tier
 eq(Math.round((4.5 / 0.66) * 100) / 100, 6.82, "cny implied fx");
 
-// vision model API id + snippet builders emit the official id
-eq(DS_UI.MODEL_API.vision, "deepseek-v4-flash-vision-exp", "vision api id");
+// vision model API id + snippet builders emit the official id (legacy vision-exp
+// alias retired 2026-09; deepseek-flash now serves both flash and vision requests)
+eq(DS_UI.MODEL_API.vision, "deepseek-flash", "vision api id");
 // builders read the live #model select; select vision before building
 const sel = document.getElementById("model");
 sel.value = "vision";
 const py = DS_UI.buildPy();
-eq(py.includes("deepseek-v4-flash-vision-exp"), true, "py snippet vision id");
+eq(py.includes("deepseek-flash"), true, "py snippet vision id");
 const ts = DS_UI.buildTs();
-eq(ts.includes("deepseek-v4-flash-vision-exp"), true, "ts snippet vision id");
+eq(ts.includes("deepseek-flash"), true, "ts snippet vision id");
 
 // formatting
 eq(DS.usd(0.007), "$0.007", "usd 0.007");

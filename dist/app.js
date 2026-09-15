@@ -47,9 +47,9 @@ function nextTransition(ms) {
 const PEAK_FACTOR = 2;
 
 const MODELS = [
-  { id: "flash",  name: "DeepSeek V4 Flash",       version: "V4-Flash-0731",        concurrency: "2,500", hit: 0.007, miss: 0.22, out: 0.66 },
+  { id: "flash",  name: "DeepSeek Flash",         version: "V4.1-Flash",   concurrency: "2,500", hit: 0.003, miss: 0.15, out: 0.6 },
   { id: "pro",    name: "DeepSeek V4 Pro",         version: "V4-Pro-0813",          concurrency: "500",   hit: 0.022, miss: 0.66, out: 1.98 },
-  { id: "vision", name: "DeepSeek V4 Flash Vision", version: "V4-Flash-Vision-Exp", concurrency: "2,500", hit: 0.007, miss: 0.22, out: 0.66 },
+  { id: "vision", name: "DeepSeek Flash Vision",  version: "V4.1-Flash",   concurrency: "2,500", hit: 0.003, miss: 0.15, out: 0.6 },
 ];
 
 function usd(x) {
@@ -84,13 +84,14 @@ if (typeof document !== "undefined") {
   const rateBody = $("rate-body");
   const ratesSub = $("rates-sub");
   let currency = "usd";
-  // Official CNY prices from api-docs.deepseek.com/zh-cn/quick_start/pricing/ (fetched 2026-08-26).
+  // Official CNY prices from api-docs.deepseek.com/zh-cn/quick_start/pricing/ (fetched 2026-09-15).
   // DeepSeek bills CNY on the ZH platform; official ¥ beats a USD*FX conversion. Off-peak shown;
   // peak = 2× (same as USD). ¥ is a hard-coded table, not an FX rate — drift only if DeepSeek reprices.
+  // Flash cut ~2026-09-10 (cache-hit -60%); Pro unchanged since 0813.
   const CNY_MODELS = {
-    flash:  { hit: 0.05, miss: 1.5, out: 4.5 },
+    flash:  { hit: 0.02, miss: 1, out: 4 },
     pro:    { hit: 0.15, miss: 4.5, out: 13.5 },
-    vision: { hit: 0.05, miss: 1.5, out: 4.5 },
+    vision: { hit: 0.02, miss: 1, out: 4 },
   };
   // Same formatting logic as DS.usd with a swappable prefix — DS.usd stays frozen.
   // Iteration-3 audit: fixed 3 decimals in the matrix so decimals align vertically
@@ -281,7 +282,9 @@ if (typeof document !== "undefined") {
 
   // Exposed for the Node smoke test without touching the frozen DS export.
   // MODEL_API declared here (before DS_UI export) to avoid TDZ — matches CNY_MODELS.
-  const MODEL_API = { flash: "deepseek-v4-flash", pro: "deepseek-v4-pro", vision: "deepseek-v4-flash-vision-exp" };
+  // deepseek-v4-flash / deepseek-v4-flash-vision-exp are retired legacy aliases —
+  // still accepted but routed to deepseek-flash (DeepSeek-V4.1-Flash) at Flash price.
+  const MODEL_API = { flash: "deepseek-flash", pro: "deepseek-v4-pro", vision: "deepseek-flash" };
   globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API };
 
   function recalc() {
@@ -296,8 +299,11 @@ if (typeof document !== "undefined") {
     const peak = off * PEAK_FACTOR;
 
     cacheReadout.textContent = Math.round(ratio * 100) + "%";
+    const inputCost = (hit * m.hit + (miss + imgT) * m.miss) / 1e6;
+    const outputCost = (outT * m.out) / 1e6;
     breakdown.textContent = fmtTokens(hit) + " @ " + usd(m.hit) + " (hit) · " +
-      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss)";
+      fmtTokens(miss) + " @ " + usd(m.miss) + " (miss) · " +
+      fmtTokens(outT) + " @ " + usd(m.out) + " (out) = " + fmtTotal(inputCost + outputCost);
 
     // Preview-aware prominence: card 1 is always the active-window total. When
     // the playhead sits in a peak window, card 1 flips to PEAK and the save
@@ -310,15 +316,15 @@ if (typeof document !== "undefined") {
     pkLabel.textContent = activePeak ? "Off-peak" : "Peak";
     rOff.className = "r-val " + (activePeak ? "pk" : "off"); // prominent: amber when peak is active, emerald otherwise
     rPeak.className = "r-val dim";  // secondary: muted
-    const pct = Math.round((1 - 1 / PEAK_FACTOR) * 100) + "%";
+    const save = peak - off;
+    const savePct = Math.round((save / peak) * 100) + "%";
     if (activePeak) {
-      const save = peak - off; // positive — waiting realizes it
       svLabel.textContent = "Save by waiting";
-      rSave.textContent = fmtTotal(save) + " · " + pct;
+      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
       svNote.textContent = "Queue off-peak to save " + fmtTotal(save);
     } else {
       svLabel.textContent = "You save";
-      rSave.textContent = fmtTotal(peak - off) + " · " + pct;
+      rSave.textContent = fmtTotal(save) + " · " + savePct + " off";
       svNote.textContent = "";
     }
   }
@@ -326,8 +332,9 @@ if (typeof document !== "undefined") {
   // Preset chips fill + recalc (type="button", never a form submit).
   for (const chip of document.querySelectorAll(".chip")) {
     chip.addEventListener("click", () => {
-      $(chip.dataset.target).value = fmtTokens(Number(chip.dataset.tokens));
-      recalc();
+      const el = $(chip.dataset.target);
+      el.value = fmtTokens(Number(chip.dataset.tokens));
+      el.blur();  // Trigger blur listener for immediate normalization.
     });
   }
   // Blur normalizes the raw SI value into grouped digits.
@@ -335,9 +342,19 @@ if (typeof document !== "undefined") {
     el.addEventListener("blur", () => { el.value = fmtTokens(parseTokens(el.value)); recalc(); });
   }
   document.getElementById("calc-form").addEventListener("input", recalc);
+  // Direct listener on cache-ratio ensures reliable updates; form bubbling unreliable for range inputs.
+  cacheRatio.addEventListener("input", () => {
+    const pct = Math.round(Number(cacheRatio.value)) + "%";
+    cacheRatio.setAttribute("aria-valuetext", pct + " cache hit ratio");
+    recalc();
+  });
   // Vision shows the image-count field; other models hide it.
   sel.addEventListener("change", () => {
     if (imgField) imgField.hidden = sel.value !== "vision";
+    // Reset image count when switching from vision to other models.
+    if (sel.value !== "vision") {
+      calcImgs.value = "0";
+    }
     recalc();
   });
   // Follow the playhead: scrub sets `preview` (Phase 2) then recalc re-prominences;

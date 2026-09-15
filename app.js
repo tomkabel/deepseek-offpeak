@@ -47,9 +47,9 @@ function nextTransition(ms) {
 const PEAK_FACTOR = 2;
 
 const MODELS = [
-  { id: "flash",  name: "DeepSeek V4 Flash",       version: "V4-Flash-0731",        concurrency: "2,500", hit: 0.007, miss: 0.22, out: 0.66 },
+  { id: "flash",  name: "DeepSeek Flash",         version: "V4.1-Flash",   concurrency: "2,500", hit: 0.003, miss: 0.15, out: 0.6 },
   { id: "pro",    name: "DeepSeek V4 Pro",         version: "V4-Pro-0813",          concurrency: "500",   hit: 0.022, miss: 0.66, out: 1.98 },
-  { id: "vision", name: "DeepSeek V4 Flash Vision", version: "V4-Flash-Vision-Exp", concurrency: "2,500", hit: 0.007, miss: 0.22, out: 0.66 },
+  { id: "vision", name: "DeepSeek Flash Vision",  version: "V4.1-Flash",   concurrency: "2,500", hit: 0.003, miss: 0.15, out: 0.6 },
 ];
 
 function usd(x) {
@@ -84,13 +84,14 @@ if (typeof document !== "undefined") {
   const rateBody = $("rate-body");
   const ratesSub = $("rates-sub");
   let currency = "usd";
-  // Official CNY prices from api-docs.deepseek.com/zh-cn/quick_start/pricing/ (fetched 2026-08-26).
+  // Official CNY prices from api-docs.deepseek.com/zh-cn/quick_start/pricing/ (fetched 2026-09-15).
   // DeepSeek bills CNY on the ZH platform; official ¥ beats a USD*FX conversion. Off-peak shown;
   // peak = 2× (same as USD). ¥ is a hard-coded table, not an FX rate — drift only if DeepSeek reprices.
+  // Flash cut ~2026-09-10 (cache-hit -60%); Pro unchanged since 0813.
   const CNY_MODELS = {
-    flash:  { hit: 0.05, miss: 1.5, out: 4.5 },
+    flash:  { hit: 0.02, miss: 1, out: 4 },
     pro:    { hit: 0.15, miss: 4.5, out: 13.5 },
-    vision: { hit: 0.05, miss: 1.5, out: 4.5 },
+    vision: { hit: 0.02, miss: 1, out: 4 },
   };
   // Same formatting logic as DS.usd with a swappable prefix — DS.usd stays frozen.
   // Iteration-3 audit: fixed 3 decimals in the matrix so decimals align vertically
@@ -281,7 +282,9 @@ if (typeof document !== "undefined") {
 
   // Exposed for the Node smoke test without touching the frozen DS export.
   // MODEL_API declared here (before DS_UI export) to avoid TDZ — matches CNY_MODELS.
-  const MODEL_API = { flash: "deepseek-v4-flash", pro: "deepseek-v4-pro", vision: "deepseek-v4-flash-vision-exp" };
+  // deepseek-v4-flash / deepseek-v4-flash-vision-exp are retired legacy aliases —
+  // still accepted but routed to deepseek-flash (DeepSeek-V4.1-Flash) at Flash price.
+  const MODEL_API = { flash: "deepseek-flash", pro: "deepseek-v4-pro", vision: "deepseek-flash" };
   globalThis.DS_UI = { parseTokens, fmtTokens, fmtTotal, rateFmt, CNY_MODELS, MODEL_API };
 
   function recalc() {
